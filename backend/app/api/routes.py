@@ -134,9 +134,6 @@ async def extract_file_code_features(
     branch: str = "main",
     github_service: GitHubService = Depends(get_github_service)
 ):
-    """
-    Extract code features from a specific file using Tree-sitter.
-    """
     try:
         print(f"Extracting code features for {owner}/{repo}/{file_path}")
         
