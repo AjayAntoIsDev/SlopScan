@@ -7,35 +7,28 @@ import re
 import requests
 from typing import List, Dict, Any, Optional, Tuple
 from github import Github, GithubException
-import structlog
 from bs4 import BeautifulSoup
 import urllib.parse
 
 from app.config import settings
 from app.models import FileInfo
 
-logger = structlog.get_logger()
 
 
 class GitHubService:
     """Service for GitHub API operations with fallback to web scraping"""
     
     def __init__(self):
-        # Use authenticated GitHub client if token is available
         if settings.github_token:
             self.github = Github(settings.github_token)
             self.authenticated = True
-            logger.info("GitHub service initialized with authentication")
+            print("Authenticated GitHub access enabled")
         else:
-            self.github = Github()  # Unauthenticated - lower rate limits
+            self.github = Github()
             self.authenticated = False
-            logger.info("GitHub service initialized without authentication (using public API)")
-            
+        
         self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'SlopScan-Bot/1.0.0',
-            'Accept': 'application/vnd.github.v3+json'
-        })
+        
         self.template_patterns = [
             r'template',
             r'scaffold',
@@ -90,48 +83,52 @@ class GitHubService:
         ]
     
     async def get_repo_structure(self, owner: str, repo: str, branch: str = "main") -> Dict[str, Any]:
-        """Get the complete structure of a repository with fallback support"""
         try:
-            # First try using GitHub API
-            repository = self.github.get_repo(f"{owner}/{repo}")
+            print(f"Getting repo structure for {owner}/{repo} on branch {branch}")
             
-            # Get all files recursively
+            url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
+            headers = {}
+            if settings.github_token:
+                headers['Authorization'] = f'token {settings.github_token}'
+            
+            response = self.session.get(url, headers=headers)
+            response.raise_for_status()
+            
+            tree_data = response.json()
+            
             files = []
-            contents = repository.get_contents("", ref=branch)
-            
-            while contents:
-                file_content = contents.pop(0)
-                if file_content.type == "dir":
-                    contents.extend(repository.get_contents(file_content.path, ref=branch))
-                else:
+            for item in tree_data.get('tree', []):
+                if item['type'] == 'blob': 
+                    download_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{item['path']}"
+                    
                     file_info = FileInfo(
-                        path=file_content.path,
-                        name=file_content.name,
-                        size=file_content.size,
-                        type=file_content.type,
-                        download_url=file_content.download_url
+                        path=item['path'],
+                        name=item['path'].split('/')[-1],
+                        size=item.get('size', 0),
+                        type='file',
+                        download_url=download_url
                     )
+                    print(f'"{item['path']}", ',end="")
                     files.append(file_info)
             
-            # Calculate statistics
+            print(f"Total files fetched: {len(files)}")
+            
             total_files = len(files)
             total_size = sum(f.size for f in files)
             
-            # Basic classification
             for file_info in files:
                 file_info.is_template = self._is_template_file(file_info.path)
                 file_info.is_auto_generated = self._is_auto_generated_file(file_info.path)
             
-            analysis_summary = {
-                "total_files": total_files,
-                "total_size": total_size,
+            structure = {
                 "template_files": sum(1 for f in files if f.is_template),
                 "auto_generated_files": sum(1 for f in files if f.is_auto_generated),
-                "source_files": sum(1 for f in files if not f.is_template and not f.is_auto_generated),
+                "actual_files": sum(1 for f in files if not f.is_template and not f.is_auto_generated),
                 "languages": self._detect_languages(files),
                 "file_types": self._analyze_file_types(files),
-                "method": "github_api"
             }
+
+            
             
             return {
                 "owner": owner,
@@ -140,23 +137,26 @@ class GitHubService:
                 "total_files": total_files,
                 "total_size": total_size,
                 "files": files,
-                "analysis_summary": analysis_summary
+                "analysis_summary": structure,
             }
             
-        except GithubException as e:
-            if e.status == 403:
-                logger.warning("GitHub API rate limit exceeded, using fallback", owner=owner, repo=repo)
-                return await self.get_repo_structure_fallback(owner, repo, branch)
-            elif e.status == 401:
-                logger.warning("GitHub API authentication failed, using fallback", owner=owner, repo=repo)
-                return await self.get_repo_structure_fallback(owner, repo, branch)
-            else:
-                logger.error("GitHub API error", error=str(e), owner=owner, repo=repo)
-                # Try fallback for any other GitHub API error
-                return await self.get_repo_structure_fallback(owner, repo, branch)
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'response') and e.response is not None:
+                if e.response.status_code == 403:
+                    print(f"GitHub API rate limit exceeded for {owner}/{repo}")
+                    return {"error": "GitHub API rate limit exceeded"}
+                elif e.response.status_code == 401:
+                    print(f"GitHub API authentication failed for {owner}/{repo}")
+                    return {"error": "GitHub API authentication failed"}
+                elif e.response.status_code == 404:
+                    print(f"Repository or branch not found for {owner}/{repo} on branch {branch}")
+                    return {"error": "Repository or branch not found"}
+            
+            print(f"GitHub Trees API error for {owner}/{repo}")
+            return {"error": "GitHub API error" }
         except Exception as e:
-            logger.error("Unexpected error, trying fallback", error=str(e), owner=owner, repo=repo)
-            return await self.get_repo_structure_fallback(owner, repo, branch)
+            print(f"Unexpected error for {owner}/{repo}")
+            return {"error": "Unexpected error"}
     
     def _is_template_file(self, file_path: str) -> bool:
         """Check if a file is likely a template or boilerplate"""
@@ -259,97 +259,18 @@ class GitHubService:
                 
         except GithubException as e:
             if e.status in [403, 401]:
-                logger.warning("GitHub API access issue, using fallback", error=str(e), file_path=file_path)
+                print(f"GitHub API access issue, using fallback for {file_path}")
                 return await self.download_file_content_fallback(owner, repo, file_path, branch)
             else:
-                logger.error("Failed to download file via API, trying fallback", error=str(e), file_path=file_path)
+                print(f"Failed to download file via API, trying fallback for {file_path}")
                 return await self.download_file_content_fallback(owner, repo, file_path, branch)
         except UnicodeDecodeError:
-            logger.warning("Binary file detected, skipping content", file_path=file_path)
+            print(f"Binary file detected, skipping content for {file_path}")
             return None
         except Exception as e:
-            logger.error("Unexpected error, trying fallback", error=str(e), file_path=file_path)
+            print(f"Unexpected error, trying fallback for {file_path}")
             return await self.download_file_content_fallback(owner, repo, file_path, branch)
     
-    async def get_repo_structure_fallback(self, owner: str, repo: str, branch: str = "main") -> Dict[str, Any]:
-        """
-        Fallback method using web scraping when GitHub API is not available
-        """
-        try:
-            # Scrape repository structure from GitHub web interface
-            url = f"https://github.com/{owner}/{repo}/tree/{branch}"
-            logger.info("Using GitHub web scraping fallback", url=url)
-            
-            response = self.session.get(url)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.content, 'html.parser')
-            files = []
-            
-            # Extract file information from the GitHub web interface
-            file_rows = soup.find_all('tr', class_='js-navigation-item')
-            
-            for row in file_rows:
-                try:
-                    # Extract file name and type
-                    link = row.find('a', class_='js-navigation-open')
-                    if not link:
-                        continue
-                        
-                    file_path = link.get('href', '').split('/')[-1]
-                    file_name = link.text.strip()
-                    
-                    # Determine if it's a file or directory
-                    icon = row.find('svg')
-                    is_dir = 'octicon-file-directory' in str(icon) if icon else False
-                    
-                    if not is_dir and file_name:
-                        # Get raw file URL for downloading
-                        raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{file_name}"
-                        
-                        file_info = FileInfo(
-                            path=file_name,
-                            name=file_name,
-                            size=0,  # Size not available from web scraping
-                            type="file",
-                            download_url=raw_url
-                        )
-                        files.append(file_info)
-                        
-                except Exception as e:
-                    logger.warning("Failed to parse file row", error=str(e))
-                    continue
-            
-            # Basic classification
-            for file_info in files:
-                file_info.is_template = self._is_template_file(file_info.path)
-                file_info.is_auto_generated = self._is_auto_generated_file(file_info.path)
-            
-            total_files = len(files)
-            analysis_summary = {
-                "total_files": total_files,
-                "total_size": 0,  # Not available from web scraping
-                "template_files": sum(1 for f in files if f.is_template),
-                "auto_generated_files": sum(1 for f in files if f.is_auto_generated),
-                "source_files": sum(1 for f in files if not f.is_template and not f.is_auto_generated),
-                "languages": self._detect_languages(files),
-                "file_types": self._analyze_file_types(files),
-                "method": "web_scraping_fallback"
-            }
-            
-            return {
-                "owner": owner,
-                "repo": repo,
-                "branch": branch,
-                "total_files": total_files,
-                "total_size": 0,
-                "files": files,
-                "analysis_summary": analysis_summary
-            }
-            
-        except Exception as e:
-            logger.error("GitHub web scraping fallback failed", error=str(e))
-            raise Exception(f"Failed to access repository via web scraping: {e}")
 
     async def download_file_content_fallback(self, owner: str, repo: str, file_path: str, branch: str = "main") -> Optional[str]:
         """
@@ -365,9 +286,9 @@ class GitHubService:
                 content = response.content.decode('utf-8')
                 return content
             except UnicodeDecodeError:
-                logger.warning("Binary file detected, skipping content", file_path=file_path)
+                print(f"Binary file detected, skipping content for {file_path}")
                 return None
                 
         except Exception as e:
-            logger.error("Failed to download file via raw URL", error=str(e), file_path=file_path)
+            print(f"Failed to download file via raw URL for {file_path}")
             return None

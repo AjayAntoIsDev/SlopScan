@@ -1,22 +1,21 @@
 """
-AI service for intelligent file analysis and selection using Groq
+AI service for intelligent file analysis and selection using Cerebras
 """
 import json
 from typing import List, Dict, Any, Optional
-from groq import Groq
+from cerebras.cloud.sdk import Cerebras
 import structlog
 
 from app.config import settings
 from app.models import FileInfo
 
-logger = structlog.get_logger()
 
 
 class AIService:
-    """Service for AI-powered file analysis using Groq"""
+    """Service for AI-powered file analysis using Cerebras"""
     
     def __init__(self):
-        self.client = Groq(api_key=settings.groq_api_key)
+        self.client = Cerebras(api_key=settings.cerebras_api_key)
     
     async def analyze_files_for_selection(self, files: List[FileInfo], repo_context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -38,12 +37,13 @@ class AIService:
         
         try:
             response = self.client.chat.completions.create(
-                model="llama-3.1-70b-versatile",  # Groq's fast model
+                model="qwen-3-235b-a22b-instruct-2507",  # Cerebras's available model
                 messages=[
                     {"role": "system", "content": "You are an expert software engineer analyzing GitHub repositories to identify important source files while excluding templates, boilerplate, and auto-generated content."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.1
+                temperature=0.1,
+                max_tokens=4000
             )
             
             # Parse AI response
@@ -80,7 +80,7 @@ class AIService:
             }
             
         except Exception as e:
-            logger.error("AI analysis failed", error=str(e))
+            print("AI analysis failed", error=str(e))
             # Fallback to rule-based selection
             return self._fallback_selection(files)
     

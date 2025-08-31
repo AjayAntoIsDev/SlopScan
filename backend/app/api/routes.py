@@ -3,7 +3,6 @@ API routes for SlopScan backend
 """
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List
-import structlog
 
 from app.models import (
     RepoRequest, AnalysisRequest, AnalysisResponse, 
@@ -12,7 +11,6 @@ from app.models import (
 from app.services.github import GitHubService
 from app.services.ai import AIService
 
-logger = structlog.get_logger()
 router = APIRouter()
 
 # Dependency injection
@@ -32,13 +30,14 @@ async def get_repository_structure(
 ):
     """Get the complete structure of a GitHub repository"""
     try:
-        logger.info("Getting repository structure", owner=owner, repo=repo, branch=branch)
+        print(f"Getting repository structure for {owner}/{repo} on branch {branch}")
+        print(f"Getting repository structure for owner={owner}, repo={repo}, branch={branch}")
         
         structure = await github_service.get_repo_structure(owner, repo, branch)
         return RepoStructure(**structure)
         
     except Exception as e:
-        logger.error("Failed to get repository structure", error=str(e), owner=owner, repo=repo)
+        print(f"Failed to get repository structure for owner={owner}, repo={repo}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -53,11 +52,12 @@ async def analyze_repository(
     excluding templates, auto-generated content, and boilerplate
     """
     try:
-        logger.info("Starting repository analysis", owner=request.owner, repo=request.repo)
+        print(f"Starting repository analysis for {request.owner}/{request.repo}")
         
         # Get repository structure
         structure = await github_service.get_repo_structure(request.owner, request.repo, request.branch)
         
+        print(structure)
         # Use AI to analyze and select files
         ai_analysis = await ai_service.analyze_files_for_selection(
             structure["files"], 
@@ -75,18 +75,12 @@ async def analyze_repository(
             total_excluded=ai_analysis["total_excluded"]
         )
         
-        logger.info(
-            "Repository analysis completed",
-            owner=request.owner,
-            repo=request.repo,
-            selected=response.total_selected,
-            excluded=response.total_excluded
-        )
+        print(f"Repository analysis completed for {request.owner}/{request.repo}: selected={response.total_selected}, excluded={response.total_excluded}")
         
         return response
         
     except Exception as e:
-        logger.error("Analysis failed", error=str(e), owner=request.owner, repo=request.repo)
+        print(f"Analysis failed for {request.owner}/{request.repo}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -100,7 +94,7 @@ async def download_files(
 ):
     """Download the content of specific files from a repository"""
     try:
-        logger.info("Starting file downloads", owner=owner, repo=repo, file_count=len(request.file_paths))
+        print(f"Starting file downloads for {owner}/{repo}: {len(request.file_paths)} files")
         
         downloaded_files = []
         total_size = 0
@@ -126,18 +120,12 @@ async def download_files(
             total_size=total_size
         )
         
-        logger.info(
-            "File downloads completed",
-            owner=owner,
-            repo=repo,
-            downloaded=len(downloaded_files),
-            total_size=total_size
-        )
+        print(f"File downloads completed for {owner}/{repo}: downloaded={len(downloaded_files)}, total_size={total_size}")
         
         return response
         
     except Exception as e:
-        logger.error("Download failed", error=str(e), owner=owner, repo=repo)
+        print(f"Download failed for {owner}/{repo}")
         raise HTTPException(status_code=400, detail=str(e))
 
 

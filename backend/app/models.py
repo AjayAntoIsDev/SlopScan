@@ -18,13 +18,9 @@ class FileInfo(BaseModel):
     path: str
     name: str
     size: int
-    type: str  # file or dir
     download_url: Optional[str] = None
-    content: Optional[str] = None
     is_template: bool = False
     is_auto_generated: bool = False
-    ai_confidence: Optional[float] = None
-    reason: Optional[str] = None
 
 
 class RepoStructure(BaseModel):
