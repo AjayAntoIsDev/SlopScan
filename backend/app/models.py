@@ -19,8 +19,7 @@ class FileInfo(BaseModel):
     name: str
     size: int
     download_url: Optional[str] = None
-    is_template: bool = False
-    is_auto_generated: bool = False
+    ignore: bool = False
 
 
 class RepoStructure(BaseModel):
@@ -31,7 +30,7 @@ class RepoStructure(BaseModel):
     total_files: int
     total_size: int
     files: List[FileInfo]
-    analysis_summary: Dict[str, Any]
+    summary: Dict[str, Any]
 
 
 class AnalysisRequest(BaseModel):
@@ -62,8 +61,15 @@ class DownloadRequest(BaseModel):
     include_content: bool = True
 
 
+class DownloadedFile(BaseModel):
+    """Information about a downloaded file"""
+    path: str
+    name: str
+    size: int
+    content: str
+
 class DownloadResponse(BaseModel):
     """Response model for file downloads"""
-    files: List[FileInfo]
+    files: List[DownloadedFile]
     total_files: int
     total_size: int

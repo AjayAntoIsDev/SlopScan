@@ -92,7 +92,6 @@ async def download_files(
     branch: str = "main",
     github_service: GitHubService = Depends(get_github_service)
 ):
-    """Download the content of specific files from a repository"""
     try:
         print(f"Starting file downloads for {owner}/{repo}: {len(request.file_paths)} files")
         
@@ -103,12 +102,10 @@ async def download_files(
             if request.include_content:
                 content = await github_service.download_file_content(owner, repo, file_path, branch)
                 if content:
-                    # Create file info with content
                     file_info = {
                         "path": file_path,
                         "name": file_path.split("/")[-1],
                         "size": len(content.encode('utf-8')),
-                        "type": "file",
                         "content": content
                     }
                     downloaded_files.append(file_info)
@@ -129,15 +126,48 @@ async def download_files(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/repo/{owner}/{repo}/file/{file_path:path}/features")
+async def extract_file_code_features(
+    owner: str,
+    repo: str,
+    file_path: str,
+    branch: str = "main",
+    github_service: GitHubService = Depends(get_github_service)
+):
+    """
+    Extract code features from a specific file using Tree-sitter.
+    """
+    try:
+        print(f"Extracting code features for {owner}/{repo}/{file_path}")
+        
+        features = await github_service.extract_code_features(owner, repo, file_path, branch)
+        
+        if not features:
+            raise HTTPException(status_code=404, detail="File not found or not supported")
+        
+        return features
+        
+    except Exception as e:
+        print(f"File feature extraction failed for {file_path}: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+
 @router.get("/")
 async def root():
     """Root endpoint"""
     return {
         "service": "SlopScan API",
-        "description": "AI-powered GitHub repository analysis and selective file downloading",
+        "description": "AI-powered GitHub repository analysis and selective file downloading with Tree-sitter code extraction",
         "endpoints": {
             "analyze": "POST /analyze - Analyze repository with AI",
             "structure": "GET /repo/{owner}/{repo}/structure - Get repository structure",
-            "download": "POST /repo/{owner}/{repo}/download - Download selected files"
-        }
+            "download": "POST /repo/{owner}/{repo}/download - Download selected files",
+            "code_features": "GET /repo/{owner}/{repo}/code-features - Extract code features using Tree-sitter",
+            "file_features": "GET /repo/{owner}/{repo}/file/{file_path}/features - Extract features from specific file",
+            "similarity_features": "GET /repo/{owner}/{repo}/similarity-features - Get features for code similarity analysis"
+        },
+        "supported_languages": [
+            "python", "javascript", "typescript", "java", "cpp", "c", "go", "rust", "ruby", "php"
+        ]
     }
