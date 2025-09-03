@@ -1,55 +1,112 @@
-"""
-AI service for intelligent file analysis and selection using Cerebras
-"""
+import httpx
 import json
-from typing import List, Dict, Any, Optional
-from cerebras.cloud.sdk import Cerebras
-import structlog
-
+from typing import Optional, Dict, Any, List
 from app.config import settings
 from app.models import FileInfo
+from app.services.prompts import PromptTemplates
 
 
-
-class AIService:
-    """Service for AI-powered file analysis using Cerebras"""
+class HackClubAIClient:
     
     def __init__(self):
-        self.client = Cerebras(api_key=settings.cerebras_api_key)
+        self.base_url = "https://ai.hackclub.com"
+        self.client = httpx.AsyncClient(timeout=60.0)
+    
+    async def chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        model: str = "qwen/qwen3-32b",
+        temperature: float = 0.6,
+        max_tokens: int = 2000,
+        stream: bool = False
+    ) -> Dict[str, Any]:
+        try:
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stream": stream
+            }
+            
+            response = await self.client.post(
+                f"{self.base_url}/chat/completions",
+                headers={"Content-Type": "application/json"},
+                json=payload
+            )
+            response.raise_for_status()
+            
+            return response.json()
+            
+        except httpx.HTTPError as e:
+            raise Exception(f"HTTP error occurred: {e}")
+        except Exception as e:
+            raise Exception(f"Error in AI request: {e}")
+    
+    async def prompt(
+        self,
+        prompt: str,
+        system_message: Optional[str] = None,
+        model: str = "qwen/qwen3-32b",
+        temperature: float = 0.7,
+        max_tokens: int = 1000
+    ) -> str:
+        messages = []
+        
+        if system_message:
+            messages.append({"role": "system", "content": system_message})
+        
+        messages.append({"role": "user", "content": prompt})
+        
+        try:
+            response = await self.chat_completion(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            
+            if "choices" in response and len(response["choices"]) > 0:
+                return response["choices"][0]["message"]["content"]
+            else:
+                raise Exception("No response content found")
+                
+        except Exception as e:
+            raise Exception(f"Error in prompt: {e}")
+    
+    async def close(self):
+        await self.client.aclose()
+
+
+class AIService:    
+    def __init__(self):
+        self.client = HackClubAIClient()
     
     async def analyze_files_for_selection(self, files: List[FileInfo], repo_context: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Use AI to intelligently select files that are important and exclude templates/auto-generated content
-        """
-        # Prepare file list for AI analysis
         file_descriptions = []
         for file_info in files:
             file_descriptions.append({
                 "path": file_info.path,
                 "name": file_info.name,
                 "size": file_info.size,
-                "is_template": file_info.is_template,
-                "is_auto_generated": file_info.is_auto_generated
+                "is_template": getattr(file_info, 'is_template', False),
+                "is_auto_generated": getattr(file_info, 'is_auto_generated', False)
             })
         
-        # Create prompt for AI analysis
-        prompt = self._create_analysis_prompt(file_descriptions, repo_context)
+        system_message, user_prompt = PromptTemplates.file_selection_analysis_prompt(
+            file_descriptions, repo_context
+        )
         
         try:
-            response = self.client.chat.completions.create(
-                model="qwen-3-235b-a22b-instruct-2507",  # Cerebras's available model
-                messages=[
-                    {"role": "system", "content": "You are an expert software engineer analyzing GitHub repositories to identify important source files while excluding templates, boilerplate, and auto-generated content."},
-                    {"role": "user", "content": prompt}
-                ],
+            response = await self.client.prompt(
+                prompt=user_prompt,
+                system_message=system_message,
                 temperature=0.1,
                 max_tokens=4000
             )
             
-            # Parse AI response
-            ai_analysis = json.loads(response.choices[0].message.content)
+            ai_analysis = json.loads(response)
             
-            # Apply AI decisions to files
             selected_files = []
             excluded_files = []
             
@@ -65,8 +122,7 @@ class AIService:
                     else:
                         excluded_files.append(file_info)
                 else:
-                    # Default behavior for files not analyzed by AI
-                    if not file_info.is_template and not file_info.is_auto_generated:
+                    if not getattr(file_info, 'is_template', False) and not getattr(file_info, 'is_auto_generated', False):
                         selected_files.append(file_info)
                     else:
                         excluded_files.append(file_info)
@@ -80,64 +136,100 @@ class AIService:
             }
             
         except Exception as e:
-            print("AI analysis failed", error=str(e))
+            print(f"AI analysis failed: {str(e)}")
             # Fallback to rule-based selection
             return self._fallback_selection(files)
     
-    def _create_analysis_prompt(self, file_descriptions: List[Dict], repo_context: Dict[str, Any]) -> str:
-        """Create a detailed prompt for AI analysis"""
-        languages = ", ".join(repo_context.get("languages", {}).keys())
+    async def analyze_readme(self, readme_content: str, repo_url: str) -> Dict[str, Any]:
+        system_message, user_prompt = PromptTemplates.readme_analysis_prompt(
+            readme_content, repo_url
+        )
         
-        prompt = f"""
-Analyze this GitHub repository and determine which files should be included in a selective download that excludes templates, boilerplate, auto-generated content, and other non-essential files.
-
-Repository Context:
-- Languages: {languages}
-- Total files: {repo_context.get('total_files', 0)}
-- File types: {json.dumps(repo_context.get('file_types', {}), indent=2)}
-
-Files to analyze:
-{json.dumps(file_descriptions, indent=2)}
-
-Please provide your analysis in this exact JSON format:
-{{
-    "summary": {{
-        "primary_language": "detected primary programming language",
-        "project_type": "web app/library/tool/etc",
-        "architecture_pattern": "MVC/microservices/monolith/etc",
-        "key_insights": ["insight1", "insight2"]
-    }},
-    "files": [
-        {{
-            "path": "exact file path",
-            "include": true/false,
-            "confidence": 0.0-1.0,
-            "reason": "detailed reason for inclusion/exclusion"
-        }}
-    ]
-}}
-
-Focus on including:
-- Core source code files
-- Important configuration files (package.json, requirements.txt, etc.)
-- Key documentation (README, API docs)
-- Essential build files (Dockerfile, Makefile)
-- Database schemas and migrations
-
-Exclude:
-- Test files and test data
-- Build artifacts and compiled files
-- Auto-generated code (protobuf, swagger, etc.)
-- Template and boilerplate files
-- IDE configuration files
-- Dependency lock files (unless critical)
-- Log files and temporary files
-- Examples and samples (unless they're the main purpose)
-
-Be selective and prioritize files that demonstrate the actual implementation and architecture.
-"""
-        return prompt
+        try:
+            response = await self.client.prompt(
+                prompt=user_prompt,
+                system_message=system_message,
+                temperature=0.3,  # Lower temperature for more consistent analysis
+                max_tokens=3000
+            )
+            
+            return self._parse_json_response(response)
+                
+        except Exception as e:
+            return {
+                "error": f"Failed to analyze README: {str(e)}"
+            }
     
+    async def analyze_repository_structure(
+        self,
+        files: List[str],
+        languages: Dict[str, int],
+        repo_info: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Analyze repository structure and provide insights
+        
+        Args:
+            files: List of file paths in the repository
+            languages: Dictionary of detected languages
+            repo_info: Additional repository information
+            
+        Returns:
+            Structure analysis results
+        """
+        system_message, user_prompt = PromptTemplates.repository_structure_analysis_prompt(
+            files, languages, repo_info
+        )
+        
+        try:
+            response = await self.client.prompt(
+                prompt=user_prompt,
+                system_message=system_message,
+                temperature=0.3,
+                max_tokens=1200
+            )
+            
+            return self._parse_json_response(response)
+                
+        except Exception as e:
+            return {
+                "error": f"Failed to analyze repository structure: {str(e)}"
+            }
+
+    async def analyze_code_quality(
+        self,
+        code_features: Dict[str, Any],
+        file_paths: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Analyze code quality based on extracted features
+        
+        Args:
+            code_features: Extracted code features from tree-sitter
+            file_paths: List of analyzed file paths
+            
+        Returns:
+            Code quality analysis
+        """
+        system_message, user_prompt = PromptTemplates.code_quality_analysis_prompt(
+            code_features, file_paths
+        )
+        
+        try:
+            response = await self.client.prompt(
+                prompt=user_prompt,
+                system_message=system_message,
+                temperature=0.3,
+                max_tokens=1000
+            )
+            
+            return self._parse_json_response(response)
+                
+        except Exception as e:
+            return {
+                "error": f"Failed to analyze code quality: {str(e)}"
+            }
+
     def _fallback_selection(self, files: List[FileInfo]) -> Dict[str, Any]:
         """Fallback rule-based selection when AI fails"""
         selected_files = []
@@ -158,9 +250,10 @@ Be selective and prioritize files that demonstrate the actual implementation and
                 file_info.ai_confidence = 0.9
                 selected_files.append(file_info)
             # Include source files that aren't templates or auto-generated
-            elif not file_info.is_template and not file_info.is_auto_generated:
+            elif not getattr(file_info, 'is_template', False) and not getattr(file_info, 'is_auto_generated', False):
                 ext = '.' + file_info.name.split('.')[-1] if '.' in file_info.name else ''
-                if ext in settings.allowed_extensions_list:
+                # Basic extension check
+                if ext in ['.py', '.js', '.ts', '.java', '.cpp', '.c', '.go', '.rs', '.rb', '.php']:
                     file_info.reason = "Source code file"
                     file_info.ai_confidence = 0.7
                     selected_files.append(file_info)
@@ -181,3 +274,63 @@ Be selective and prioritize files that demonstrate the actual implementation and
             "total_selected": len(selected_files),
             "total_excluded": len(excluded_files)
         }
+    
+    def _parse_json_response(self, response: str) -> Dict[str, Any]:
+        """
+        Parse JSON response from AI, handling various formatting issues
+        
+        Args:
+            response: Raw AI response string
+            
+        Returns:
+            Parsed JSON dict or error dict if parsing fails
+        """
+        # Clean up the response to handle markdown code blocks and other formatting
+        cleaned_response = response.strip()
+        
+        # Remove markdown code block markers if present
+        if cleaned_response.startswith("```json"):
+            cleaned_response = cleaned_response[7:]  # Remove ```json
+        elif cleaned_response.startswith("```"):
+            cleaned_response = cleaned_response[3:]   # Remove ```
+        
+        if cleaned_response.endswith("```"):
+            cleaned_response = cleaned_response[:-3]  # Remove trailing ```
+        
+        # Remove any leading/trailing whitespace after cleanup
+        cleaned_response = cleaned_response.strip()
+        
+        try:
+            return json.loads(cleaned_response)
+        except json.JSONDecodeError as e:
+            # If JSON parsing still fails, try to extract JSON from the response
+            import re
+            json_match = re.search(r'\{.*\}', cleaned_response, re.DOTALL)
+            if json_match:
+                try:
+                    return json.loads(json_match.group())
+                except json.JSONDecodeError:
+                    pass
+            
+            # If all JSON parsing attempts fail, return error dict
+            return {
+                "raw_analysis": response,
+                "cleaned_response": cleaned_response,
+                "error": f"Failed to parse JSON response: {str(e)}"
+            }
+
+_ai_service: Optional[AIService] = None
+
+def get_ai_service() -> AIService:
+    """Get or create the AI service singleton"""
+    global _ai_service
+    if _ai_service is None:
+        _ai_service = AIService()
+    return _ai_service
+
+async def cleanup_ai_service():
+    """Cleanup the AI service"""
+    global _ai_service
+    if _ai_service:
+        await _ai_service.client.close()
+        _ai_service = None

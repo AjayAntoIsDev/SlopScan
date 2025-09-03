@@ -3,6 +3,7 @@ API routes for SlopScan backend
 """
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List
+import re
 
 from app.models import (
     RepoRequest, AnalysisRequest, AnalysisResponse, 
@@ -19,6 +20,27 @@ def get_github_service() -> GitHubService:
 
 def get_ai_service() -> AIService:
     return AIService()
+
+def parse_github_url(repo_url: str) -> tuple[str, str]:
+    """
+    Parse GitHub URL to extract owner and repo name
+    
+    Args:
+        repo_url: GitHub repository URL or owner/repo format
+        
+    Returns:
+        Tuple of (owner, repo)
+        
+    Raises:
+        ValueError: If URL format is invalid
+    """
+    github_pattern = r"(?:github\.com/)?([^/]+)/([^/]+?)(?:\.git)?(?:/.*)?$"
+    match = re.search(github_pattern, repo_url)
+    
+    if not match:
+        raise ValueError("Invalid GitHub repository URL")
+    
+    return match.groups()
 
 
 @router.get("/repo/{owner}/{repo}/structure", response_model=RepoStructure)
@@ -148,6 +170,48 @@ async def extract_file_code_features(
         print(f"File feature extraction failed for {file_path}: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
+
+@router.get("/repo-analysis")
+async def repo_analysis(url: str):
+    """Repository analysis endpoint that takes a repository URL"""
+    # TODO: Implement repository analysis logic
+    return {
+        "url": url,
+        "message": "Repository analysis endpoint - implementation pending"
+    }
+
+
+@router.get("/repo-analysis/readme-analysis")
+async def readme_analysis(
+    repo_url: str,
+    github_service: GitHubService = Depends(get_github_service),
+    ai_service: AIService = Depends(get_ai_service)
+):
+    """README analysis endpoint that fetches and analyzes README content using AI"""
+    try:
+        owner, repo = parse_github_url(repo_url)
+        
+        readme_content = await github_service.get_readme_content(owner, repo)
+        
+        if not readme_content:
+            raise HTTPException(status_code=404, detail="README not found in repository")
+        
+        analysis = await ai_service.analyze_readme(readme_content, repo_url)
+        
+        return {
+            "repo_url": repo_url,
+            "owner": owner,
+            "repo": repo,
+            "content_length": len(readme_content),
+            "probability": analysis.get("probability", None),
+            "reasoning": analysis.get("reasoning", None)
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to analyze README: {str(e)}")
 
 
 @router.get("/")

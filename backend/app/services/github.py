@@ -308,3 +308,31 @@ class GitHubService:
         except Exception as e:
             print(f"Error generating similarity features: {e}")
             return {}
+    
+    async def get_readme_content(self, owner: str, repo: str, branch: str = "main") -> Optional[str]:
+        readme_files = [
+            "README.md", "readme.md", "Readme.md", 
+            "README.rst", "readme.rst", "Readme.rst",
+            "README.txt", "readme.txt", "Readme.txt",
+            "README", "readme"
+        ]
+        
+        for readme_file in readme_files:
+            try:
+                repository = self.github.get_repo(f"{owner}/{repo}")
+                file_content = repository.get_contents(readme_file, ref=branch)
+                
+                decoded_content = base64.b64decode(file_content.content).decode('utf-8')
+                return decoded_content
+                
+            except GithubException as e:
+                if e.status == 404:
+                    continue
+                else:
+                    print(f"GitHub API error fetching {readme_file}: {e}")
+                    continue
+            except Exception as e:
+                print(f"Error decoding {readme_file}: {e}")
+                continue
+        
+        return None
