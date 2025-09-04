@@ -280,7 +280,7 @@ class GitHubService:
             
             # Code structure metrics
             extraction_stats = features.get('extraction_stats', {})
-            feature_counts = extraction_stats.get('feature_counts', {})
+            feature_counts = extraction_stats.get('feature_counts', {});
             
             similarity_features['code_structure_metrics'] = {
                 'function_to_class_ratio': (
@@ -336,3 +336,126 @@ class GitHubService:
                 continue
         
         return None
+
+    async def get_repository_commits(self, owner: str, repo: str, branch: str = "main", per_page: int = 100) -> Dict[str, Any]:
+        limit = 25  # I want dont want to be spamming reqs on my key 😭
+        truncated = False
+        try:
+            print(f"Getting commits for {owner}/{repo} on branch {branch}")
+            
+            url = f"https://api.github.com/repos/{owner}/{repo}/commits"
+            headers = {}
+            if settings.github_token:
+                headers['Authorization'] = f'token {settings.github_token}'
+            
+            params = {
+                'sha': branch,
+                'per_page': min(per_page, 100)  # GitHub API max is 100
+            }
+            
+            response = self.session.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            
+            commits_data = response.json()
+            commits = []
+            with open(f"./commit_.json", "w") as f:
+                    import json
+                    json.dump(commits_data, f, indent=2)
+            
+            for i, commit_item in enumerate(commits_data):
+                if i >= limit:
+                    break
+                    
+                commit_sha = commit_item['sha']
+                commit_url = f"https://api.github.com/repos/{owner}/{repo}/commits/{commit_sha}"
+                
+                commit_response = self.session.get(commit_url, headers=headers)
+                commit_response.raise_for_status()
+                commit_detail = commit_response.json()
+                
+                files_changed = []
+                total_additions = 0
+                total_deletions = 0
+                
+                for file_change in commit_detail.get('files', []):
+                    file_info = {
+                        'filename': file_change['filename'],
+                        'status': file_change['status'],
+                        'additions': file_change.get('additions', 0),
+                        'deletions': file_change.get('deletions', 0),
+                        'changes': file_change.get('changes', 0)
+                    }
+                    files_changed.append(file_info)
+                    total_additions += file_change.get('additions', 0)
+                    total_deletions += file_change.get('deletions', 0)
+                
+                commit_info = {
+                    'message': commit_detail['commit']['message'],
+                    'author_name': commit_detail['commit']['author']['name'],
+                    'date': commit_detail['commit']['author']['date'],
+                    'files_changed': files_changed,
+                    'total_additions': total_additions,
+                    'total_deletions': total_deletions,
+                    'total_files': len(files_changed)
+                }
+                
+                commits.append(commit_info)
+            else:
+                if len(commits_data) > limit:
+                    truncated = True
+            
+            return {
+                'owner': owner,
+                'repo': repo,
+                'branch': branch,
+                'commits': commits,
+                'total_commits': len(commits_data),
+                'truncated': truncated
+            }
+            
+        except requests.exceptions.RequestException as e:
+            print(f"API request failed for {owner}/{repo}: {e}")
+            raise Exception(f"Failed to fetch commits: {str(e)}")
+        except Exception as e:
+            print(f"Error getting commits for {owner}/{repo}: {e}")
+            raise Exception(f"Failed to get repository commits: {str(e)}")
+    
+    async def get_total_commits_count(self, owner: str, repo: str, branch: str = "main") -> int:
+        try:
+            print(f"Getting total commits count for {owner}/{repo} on branch {branch}")
+            
+            url = f"https://api.github.com/repos/{owner}/{repo}/commits"
+            params = {
+                'sha': branch,
+                'per_page': 1
+            }
+            headers = {'Accept': 'application/vnd.github+json'}
+            if settings.github_token:
+                headers['Authorization'] = f'token {settings.github_token}'
+            
+            response = self.session.head(url, params=params, headers=headers)
+            response.raise_for_status()
+            
+            link_header = response.headers.get('Link')
+            
+            if not link_header:
+                get_response = self.session.get(url, params=params, headers=headers)
+                get_response.raise_for_status()
+                commits_data = get_response.json()
+                total_commits = len(commits_data) if commits_data else 0
+                return total_commits
+            
+            last_page_match = re.search(r'<[^>]*page=(\d+)[^>]*>;\s*rel="last"', link_header)
+
+            if last_page_match:
+                total_commits = int(last_page_match.group(1))
+                return total_commits
+            else:
+                return 1
+                
+        except requests.exceptions.RequestException as e:
+            print(f"API request failed for {owner}/{repo}: {e}")
+            raise Exception(f"Failed to fetch commits count: {str(e)}")
+        except Exception as e:
+            print(f"Error getting commits count for {owner}/{repo}: {e}")
+            raise Exception(f"Failed to get repository commits count: {str(e)}")

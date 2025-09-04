@@ -73,3 +73,45 @@ class DownloadResponse(BaseModel):
     files: List[DownloadedFile]
     total_files: int
     total_size: int
+
+
+class FileChange(BaseModel):
+    """Information about a file change in a commit"""
+    filename: str
+    status: str  # "added", "modified", "removed"
+    additions: int
+    deletions: int
+    changes: int
+    patch: Optional[str] = None
+
+
+class CommitInfo(BaseModel):
+    """Information about a repository commit"""
+    sha: str
+    message: str
+    author_name: str
+    author_email: str
+    date: str
+    files_changed: List[FileChange]
+    total_additions: int
+    total_deletions: int
+    total_files: int
+
+
+class CommitsResponse(BaseModel):
+    """Response model for repository commits"""
+    owner: str
+    repo: str
+    branch: str
+    commits: List[CommitInfo]
+    total_commits: int
+
+
+class CommitsCountResponse(BaseModel):
+    """Response model for total commits count"""
+    repo_url: str
+    owner: str
+    repo: str
+    branch: str
+    total_commits: int
+    method: str  # "pagination_headers" or "fallback"

@@ -7,7 +7,8 @@ import re
 
 from app.models import (
     RepoRequest, AnalysisRequest, AnalysisResponse, 
-    DownloadRequest, DownloadResponse, RepoStructure
+    DownloadRequest, DownloadResponse, RepoStructure,
+    CommitsResponse, CommitsCountResponse
 )
 from app.services.github import GitHubService
 from app.services.ai import AIService
@@ -187,7 +188,6 @@ async def readme_analysis(
     github_service: GitHubService = Depends(get_github_service),
     ai_service: AIService = Depends(get_ai_service)
 ):
-    """README analysis endpoint that fetches and analyzes README content using AI"""
     try:
         owner, repo = parse_github_url(repo_url)
         
@@ -214,6 +214,71 @@ async def readme_analysis(
         raise HTTPException(status_code=400, detail=f"Failed to analyze README: {str(e)}")
 
 
+@router.get("/repo-analysis/commits")
+async def commits(
+    repo_url: str,
+    branch: str = "main",
+    per_page: int = 100,
+    github_service: GitHubService = Depends(get_github_service),
+):
+    try:
+        owner, repo = parse_github_url(repo_url)
+        
+        total_commits = await github_service.get_total_commits_count(owner, repo, branch)
+        
+        commits_data = await github_service.get_repository_commits(owner, repo, branch, per_page)
+        
+        if not commits_data or not commits_data.get("commits"):
+            raise HTTPException(status_code=404, detail="No commits found in repository")
+        
+        
+        return {
+            "repo_url": repo_url,
+            "owner": owner,
+            "repo": repo,
+            "branch": branch,
+            "total_commits": total_commits, 
+            "commits_got": len(commits_data.get("commits", [])),
+            "commits": commits_data.get("commits", [])
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to analyze commits: {str(e)}")
+
+
+@router.get("/repo/{owner}/{repo}/commits/count", response_model=CommitsCountResponse)
+async def get_total_commits_count(
+    owner: str,
+    repo: str,
+    branch: str = "main",
+    github_service: GitHubService = Depends(get_github_service)
+):
+    """
+    Get the total number of commits in a repository efficiently using GitHub API pagination.
+    This endpoint uses HEAD requests and Link headers to avoid fetching all commit data.
+    """
+    try:
+        print(f"Getting total commits count for {owner}/{repo} on branch {branch}")
+        
+        total_commits = await github_service.get_total_commits_count(owner, repo, branch)
+        
+        return CommitsCountResponse(
+            repo_url=f"https://github.com/{owner}/{repo}",
+            owner=owner,
+            repo=repo,
+            branch=branch,
+            total_commits=total_commits,
+            method="pagination_headers"
+        )
+        
+    except Exception as e:
+        print(f"Failed to get commits count for {owner}/{repo}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/")
 async def root():
     """Root endpoint"""
@@ -223,6 +288,8 @@ async def root():
         "endpoints": {
             "analyze": "POST /analyze - Analyze repository with AI",
             "structure": "GET /repo/{owner}/{repo}/structure - Get repository structure",
+            "commits": "GET /repo/{owner}/{repo}/commits - Get repository commits with file changes",
+            "commits_count": "GET /repo/{owner}/{repo}/commits/count - Get total commits count efficiently",
             "download": "POST /repo/{owner}/{repo}/download - Download selected files",
             "code_features": "GET /repo/{owner}/{repo}/code-features - Extract code features using Tree-sitter",
             "file_features": "GET /repo/{owner}/{repo}/file/{file_path}/features - Extract features from specific file",
