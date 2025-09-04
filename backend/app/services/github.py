@@ -320,13 +320,17 @@ class GitHubService:
         for readme_file in readme_files:
             try:
                 repository = self.github.get_repo(f"{owner}/{repo}")
+                print(f"Trying to fetch {readme_file} from {owner}/{repo}")
+                print(f'branch used: {branch}')
                 file_content = repository.get_contents(readme_file, ref=branch)
-                
+                print(f"Found {readme_file} in {owner}/{repo}")
+                print(f'branch used: {branch}')
                 decoded_content = base64.b64decode(file_content.content).decode('utf-8')
                 return decoded_content
                 
             except GithubException as e:
                 if e.status == 404:
+                    print(f"{readme_file} not found, trying next option")
                     continue
                 else:
                     print(f"GitHub API error fetching {readme_file}: {e}")

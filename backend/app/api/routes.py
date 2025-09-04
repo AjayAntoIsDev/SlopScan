@@ -185,13 +185,14 @@ async def repo_analysis(url: str):
 @router.get("/repo-analysis/readme-analysis")
 async def readme_analysis(
     repo_url: str,
+    branch: str = "main",
     github_service: GitHubService = Depends(get_github_service),
     ai_service: AIService = Depends(get_ai_service)
 ):
     try:
         owner, repo = parse_github_url(repo_url)
         
-        readme_content = await github_service.get_readme_content(owner, repo)
+        readme_content = await github_service.get_readme_content(owner, repo, branch)
         
         if not readme_content:
             raise HTTPException(status_code=404, detail="README not found in repository")
@@ -204,7 +205,9 @@ async def readme_analysis(
             "repo": repo,
             "content_length": len(readme_content),
             "probability": analysis.get("probability", None),
-            "reasoning": analysis.get("reasoning", None)
+            "reasoning": analysis.get("reasoning", None),
+            "summary": analysis.get("summary", None),
+            "complexity": analysis.get("complexity", None)
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -220,6 +223,7 @@ async def commits(
     branch: str = "main",
     per_page: int = 100,
     github_service: GitHubService = Depends(get_github_service),
+    ai_service: AIService = Depends(get_ai_service)
 ):
     try:
         owner, repo = parse_github_url(repo_url)
@@ -228,6 +232,8 @@ async def commits(
         
         commits_data = await github_service.get_repository_commits(owner, repo, branch, per_page)
         
+        ai_commits_analysis = await ai_service.analyze_commits(commits_data, {"owner": owner, "repo": repo, "branch": branch}
+                                                               )
         if not commits_data or not commits_data.get("commits"):
             raise HTTPException(status_code=404, detail="No commits found in repository")
         
@@ -239,7 +245,8 @@ async def commits(
             "branch": branch,
             "total_commits": total_commits, 
             "commits_got": len(commits_data.get("commits", [])),
-            "commits": commits_data.get("commits", [])
+            "commits": commits_data.get("commits", []),
+            "analysis": ai_commits_analysis
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -249,34 +256,100 @@ async def commits(
         raise HTTPException(status_code=400, detail=f"Failed to analyze commits: {str(e)}")
 
 
-@router.get("/repo/{owner}/{repo}/commits/count", response_model=CommitsCountResponse)
-async def get_total_commits_count(
-    owner: str,
-    repo: str,
+@router.get("/repo-analysis/commits-count")
+async def commits_count(
+    repo_url: str,
     branch: str = "main",
-    github_service: GitHubService = Depends(get_github_service)
+    github_service: GitHubService = Depends(get_github_service),
 ):
-    """
-    Get the total number of commits in a repository efficiently using GitHub API pagination.
-    This endpoint uses HEAD requests and Link headers to avoid fetching all commit data.
-    """
     try:
-        print(f"Getting total commits count for {owner}/{repo} on branch {branch}")
+        owner, repo = parse_github_url(repo_url)
+
+        total_commits = await github_service.get_total_commits_count(owner, repo, branch)
+
+        return {
+            "repo_url": repo_url,
+            "owner": owner,
+            "repo": repo,
+            "branch": branch,
+            "total_commits": total_commits
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, detail=f"Failed to analyze commits: {str(e)}")
+    
+
+@router.get("/repo-analysis/commits-analysis")
+async def analyze_repository_commits(
+    repo_url: str,
+    branch: str = "main",
+    per_page: int = 100,
+    include_readme_context: bool = True,
+    github_service: GitHubService = Depends(get_github_service),
+    ai_service: AIService = Depends(get_ai_service)
+):
+    try:
+        owner, repo = parse_github_url(repo_url)
+
+        print(f"Starting commit analysis for {owner}/{repo} on branch {branch}")
         
         total_commits = await github_service.get_total_commits_count(owner, repo, branch)
         
-        return CommitsCountResponse(
-            repo_url=f"https://github.com/{owner}/{repo}",
-            owner=owner,
-            repo=repo,
-            branch=branch,
-            total_commits=total_commits,
-            method="pagination_headers"
+        commits_data = await github_service.get_repository_commits(owner, repo, branch, per_page)
+        
+        if not commits_data or not commits_data.get("commits"):
+            raise HTTPException(status_code=404, detail="No commits found in repository")
+        
+        readme_analysis = None
+        if include_readme_context:
+            try:
+                readme_content = await github_service.get_readme_content(owner, repo, branch)
+                if readme_content:
+                    readme_analysis = await ai_service.analyze_readme(readme_content, f"https://github.com/{owner}/{repo}")
+            except Exception as e:
+                print(f"Failed to get README context: {e}")
+        
+        repo_info = {
+            "owner": owner,
+            "repo": repo,
+            "branch": branch,
+            "total_commits": total_commits
+        }
+        
+        commit_analysis = await ai_service.analyze_commits(
+            commits_data=commits_data.get("commits", []),
+            repo_info=repo_info,
+            readme_analysis=readme_analysis
         )
         
+        response = {
+            "owner": owner,
+            "repo": repo,
+            "branch": branch,
+            "total_commits": total_commits,
+            "commits_analyzed": len(commits_data.get("commits", [])),
+            "analysis": commit_analysis,
+            "readme_context_included": readme_analysis is not None,
+            "analysis_metadata": {
+                "timestamp": "analyzed",
+                "method": "ai_analysis",
+                "sample_size": len(commits_data.get("commits", []))
+            }
+        }
+        
+        print(f"Commit analysis completed for {owner}/{repo}: analyzed {len(commits_data.get('commits', []))} commits")
+        
+        return response
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Failed to get commits count for {owner}/{repo}")
-        raise HTTPException(status_code=400, detail=str(e))
+        print(f"Commit analysis failed for {owner}/{repo}: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to analyze commits: {str(e)}")
 
 
 @router.get("/")
@@ -289,6 +362,7 @@ async def root():
             "analyze": "POST /analyze - Analyze repository with AI",
             "structure": "GET /repo/{owner}/{repo}/structure - Get repository structure",
             "commits": "GET /repo/{owner}/{repo}/commits - Get repository commits with file changes",
+            "commit_analysis": "GET /repo/{owner}/{repo}/commit-analysis - AI-powered commit analysis for fraud detection",
             "commits_count": "GET /repo/{owner}/{repo}/commits/count - Get total commits count efficiently",
             "download": "POST /repo/{owner}/{repo}/download - Download selected files",
             "code_features": "GET /repo/{owner}/{repo}/code-features - Extract code features using Tree-sitter",

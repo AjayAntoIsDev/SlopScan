@@ -230,6 +230,59 @@ class AIService:
                 "error": f"Failed to analyze code quality: {str(e)}"
             }
 
+    async def analyze_commits(
+        self,
+        commits_data: List[Dict[str, Any]],
+        repo_info: Dict[str, Any],
+        readme_analysis: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
+        try:
+            total_commits = repo_info.get('total_commits', len(commits_data))
+            
+            readme = readme_analysis or {}
+            
+            system_message, user_prompt = PromptTemplates.commits_analysis_prompt(
+                total_commits=total_commits,
+                readme=readme,
+                commits_data=commits_data,
+                repo_info=repo_info
+            )
+            
+            response = await self.client.prompt(
+                prompt=user_prompt,
+                system_message=system_message,
+                temperature=0.3, 
+                max_tokens=2000
+            )
+            
+            ai_analysis = self._parse_json_response(response)
+            
+            if "error" in ai_analysis:
+                return {
+                    "total_commits_analyzed": len(commits_data),
+                    "repo_info": repo_info,
+                    "error": ai_analysis["error"],
+                    "raw_response": ai_analysis.get("raw_analysis", response)
+                }
+            
+            ai_analysis.update({
+                "total_commits_analyzed": len(commits_data),
+                "total_commits_in_repo": total_commits,
+                "repo_info": repo_info,
+                "analysis_timestamp": "analyzed",
+                "status": "completed"
+            })
+            
+            return ai_analysis
+            
+        except Exception as e:
+            return {
+                "total_commits_analyzed": len(commits_data),
+                "repo_info": repo_info,
+                "error": f"Failed to analyze commits: {str(e)}",
+                "status": "failed"
+            }
+
     def _fallback_selection(self, files: List[FileInfo]) -> Dict[str, Any]:
         """Fallback rule-based selection when AI fails"""
         selected_files = []

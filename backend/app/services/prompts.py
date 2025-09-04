@@ -1,5 +1,6 @@
 import json
 from typing import Dict, Any, List
+from datetime import datetime
 
 
 class PromptTemplates:
@@ -30,6 +31,8 @@ class PromptTemplates:
         "probability": 0-100,
         "reasoning": "detailed explanation of your assessment"
         }
+
+        Provide a summary of the README content and a guess on its complexity between 0-100 (0=very simple, 100=very complex) and also provide why you rated it that way.
         """
         
         user_prompt = f"""
@@ -41,7 +44,9 @@ class PromptTemplates:
         Provide your answer as a number between 0 (definitely human) and 100 (definitely AI). return the probability and your reasoning in the following schema.
         {{
         "probability": 0-100,
-        "reasoning": "detailed explanation of your assessment"
+        "reasoning": "detailed explanation of your assessment",
+        "complexity": 0-100,
+        "summary": "summary of the README content and its complexity"
         }}
         """
         
@@ -204,5 +209,80 @@ Exclude:
 
 Be selective and prioritize files that demonstrate the actual implementation and architecture.
 """
+        
+        return system_message, user_prompt
+
+    @staticmethod
+    def commits_analysis_prompt(
+        total_commits: int,
+        readme: Dict[str, Any],
+        commits_data: Dict[str, Any],
+        repo_info: Dict[str, Any]
+    ) -> tuple[str, str]:
+        system_message = """You are an expert software engineering analyst working for hackclub specializing in Git commit history analysis and fraud detection. 
+        Your task is to analyze repository commits to identify fraudulent activity, AI vibe coded commits, etc.
+        You will provide your analysis based on the commit messages, code edited in the commits, frequency of commits, and other metadata.
+        
+        Here are some general guidelines for your analysis:
+        1. Look for the use of AI in the commit messages
+            HUMAN PATTERNS (lower AI probability 0.05-0.25):
+            - Natural imperfections: typos, informal grammar, inconsistent style
+            - Personal voice: use of "I think", "gonna", "pretty cool", casual contractions
+            - Direct and simple language: "Added this feature", "Fixed the bug"
+            - Authentic emotion: frustration or excitement: "finally got it working!", "this sucks"
+            - Technical but personal tone: "had issues with X, solved by doing Y"
+
+            AI PATTERNS (higher AI probability 0.70-0.95):
+            - Perfect grammar combined with a corporate tone
+            - Buzzword clusters: "comprehensive solution leveraging cutting-edge technology"
+            - Marketing speak: "showcasing expertise", "seamlessly integrates", "effortlessly optimizes"
+            - Structured lists with emoji bullets (e.g., ✅, 🎯, 🚀)
+            - Overuse of em dashes for emphasis—like this
+            - Generic and overly formal descriptions: "robust platform delivering exceptional results
+        2. Analyze amount of code changed and patterns to identify irregularities and possible fraud
+            - Large commits with vague messages
+            - Code changes that don't match the commit message
+        3.Compare the amount of commits and its contents with the repos metadata
+            - The repo metadata includes a AI summary of the readme and a guess on how complex the project will be
+            - Try to identify if the commits match the complexity of the project
+        4.Look for signs of over-frequent, under-frequent, or steady commit activity.
+        5.Identify any red flags that may indicate fraudulent activity
+        6.Only the last few commits are provided for analysis, so base your conclusions on this sample.
+
+        You dont have to give importance to the README analysis, but it can be used as a context to understand the complexity of the project and the type of commits that should be expected.
+
+        Also try to see if there is a justified reason for the commits to be large (ie. auto-generated code, large refactors, templates,etc.)
+        You can ignore who the author of the commits is
+        Try to be a bit lenient if the commits are not perfect, as most developers are not experts in writing good commit messages.
+
+        Try not giving too much importance to the date of the commits, as some projects may have a burst of activity followed by long periods of inactivity.
+        """
+        
+        user_prompt = f"""
+        Analyze the commit history for this repository:
+        
+        Repository: {repo_info.get('owner', 'unknown')}/{repo_info.get('repo', 'unknown')}
+        AI Summary of README: {readme.get('summary', 'N/A')}
+        Complexity of project (0-100): {readme.get('complexity', 'N/A')}
+        Branch: {repo_info.get('branch', 'main')}
+
+        Total commits: {total_commits}
+        Commits provided for analysis: {len(commits_data)}
+        
+        Commits:
+        {json.dumps(commits_data, indent=2)[:8000]}
+        
+        Current date: {datetime.now().strftime('%Y-%m-%d')}
+        Provide analysis in JSON format:
+        {{
+            "code_adequacy": 0-100, // How much the commits messages match the changes made in the code (0=not at all, 100=perfectly),
+            "repo_adequacy": 0-100, // How much the commits match the complexity of the project (0=not at all, 100=perfectly)
+            "ai": 0-100, // How much the commits seem to be written by AI (0=definitely human, 100=definitely AI)
+            "fraud": 0-100, // How much the project seem to be fraudulent(time inflating) (0=definitely not, 100=definitely yes)
+            "adequacy":0-100 // Overall adequacy (code + repo),
+            "reasoning": "detailed explanation of your assessment",
+            "red_flags": ["flag1", "flag2"]
+        }}
+        """
         
         return system_message, user_prompt
