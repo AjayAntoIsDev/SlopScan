@@ -288,7 +288,7 @@ Be selective and prioritize files that demonstrate the actual implementation and
         return system_message, user_prompt
 
     @staticmethod
-    def devlog_analysis_prompt(
+    def som_analysis_prompt(
         readme: Dict[str, Any],
         total_commits: int,
         commits_data: Dict[str, Any],

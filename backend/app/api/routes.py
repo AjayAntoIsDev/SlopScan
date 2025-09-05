@@ -202,16 +202,6 @@ async def extract_file_code_features(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/repo-analysis")
-async def repo_analysis(url: str):
-    """Repository analysis endpoint that takes a repository URL"""
-    # TODO: Implement repository analysis logic
-    return {
-        "url": url,
-        "message": "Repository analysis endpoint - implementation pending"
-    }
-
-
 @router.get("/repo-analysis/readme-analysis")
 async def readme_analysis(
     repo_url: str,
@@ -387,7 +377,6 @@ async def get_summer_project(
     project: str,
     summer_service: SummerOfMakingService = Depends(get_summer_of_making_service)
 ):
-    """Get Summer of Making project data including devlogs"""
     try:
         project_id = parse_summer_project_url(project)
         
@@ -406,6 +395,7 @@ async def get_summer_project(
             "updated_at": project_data.get("updated_at"),
             "devlogs_count": len(project_data.get("devlogs", [])),
             "devlogs": project_data.get("devlogs", []),
+            "repo_link": project_data.get("repo_link", None)
         }
         
         print(f"Successfully fetched Summer of Making project {project_id} with {response['devlogs_count']} devlogs")
@@ -420,7 +410,73 @@ async def get_summer_project(
         print(f"Failed to fetch Summer of Making project: {e}")
         raise HTTPException(status_code=400, detail=f"Failed to fetch project data: {str(e)}")
 
+@router.get("/som-analysis")
+async def get_summer_analysis(
+    project: str,
+    summer_service: SummerOfMakingService = Depends(get_summer_of_making_service),
+    github_service: GitHubService = Depends(get_github_service),
+    ai_service: AIService = Depends(get_ai_service)
+):
+    try:
+        project_id = parse_summer_project_url(project)
+        
+        print(f"Starting comprehensive analysis for Summer of Making project {project_id}")
+        
+        project_data = await summer_service.get_project_data(project_id)
+        
+        if not project_data:
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+        
+        repo_analysis = None
+        repo_url = project_data.get("repo_link")
+        
+        if repo_url:
+            owner, repo = parse_github_url(repo_url)
+            
+            total_commits = await github_service.get_total_commits_count(owner, repo, "main")
+            commits_data = await github_service.get_repository_commits(owner, repo, "main", 100)
+            
+            readme_analysis = None
+            try:
+                readme_content = await github_service.get_readme_content(owner, repo, "main")
+                if readme_content:
+                    readme_analysis = await ai_service.analyze_readme(readme_content, repo_url)
+            except Exception as e:
+                print(f"Failed to get README analysis: {e}")
+            
+            repo_analysis = {
+                "owner": owner,
+                "repo": repo,
+                "total_commits": total_commits,
+                "commits": commits_data.get("commits", []) if commits_data else [],
+                "readme_analysis": readme_analysis
+            }
+        
+        print(f"Running AI analysis for project {project_id}")
+        ai_analysis = await ai_service.analyze_som(project_data, repo_analysis)
+        
+        response = {
+            "project_id": project_id,
+            "project_title": project_data.get("title"),
+            "project_description": project_data.get("description"),
+            "devlogs_count": len(project_data.get("devlogs", [])),
+            "repo_link": repo_url,
+            "ai_analysis": ai_analysis,
+        }
+        
+        print(f"Comprehensive analysis completed for Summer of Making project {project_id}")
+        
+        return response
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Failed to analyze Summer of Making project: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to analyze project: {str(e)}")
 
+    
 @router.get("/")
 async def root():
     """Root endpoint"""

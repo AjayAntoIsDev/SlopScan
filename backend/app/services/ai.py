@@ -283,6 +283,73 @@ class AIService:
                 "status": "failed"
             }
 
+    async def analyze_som(
+        self,
+        project_data: Dict[str, Any],
+        repo_analysis: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
+        try:
+            devlogs = project_data.get("devlogs", [])
+            som_info = {
+                "title": project_data.get("title"),
+                "description": project_data.get("description"),
+                "devlogs_count": len(devlogs),
+                "devlogs": devlogs
+            }
+            
+            commits_data = []
+            total_commits = 0
+            readme = {}
+            
+            if repo_analysis:
+                commits_data = repo_analysis.get("commits", [])
+                total_commits = repo_analysis.get("total_commits", 0)
+                readme = repo_analysis.get("readme_analysis", {})
+            
+            system_message, user_prompt = PromptTemplates.som_analysis_prompt(
+                readme=readme,
+                total_commits=total_commits,
+                commits_data=commits_data,
+                som_info=som_info
+            )
+            
+            response = await self.client.prompt(
+                prompt=user_prompt,
+                system_message=system_message,
+                temperature=0.3,
+                max_tokens=3000
+            )
+            
+            ai_analysis = self._parse_json_response(response)
+            
+            if "error" in ai_analysis:
+                return {
+                    "project_title": som_info["title"],
+                    "total_devlogs": len(devlogs),
+                    "has_repo_analysis": repo_analysis is not None,
+                    "error": ai_analysis["error"],
+                    "raw_response": ai_analysis.get("raw_analysis", response)
+                }
+            
+            ai_analysis.update({
+                "project_title": som_info["title"],
+                "total_devlogs": len(devlogs),
+                "has_repo_analysis": repo_analysis is not None,
+                "analysis_timestamp": "analyzed",
+                "status": "completed"
+            })
+            
+            return ai_analysis
+            
+        except Exception as e:
+            return {
+                "project_title": project_data.get("title", "Unknown"),
+                "total_devlogs": len(project_data.get("devlogs", [])),
+                "has_repo_analysis": repo_analysis is not None,
+                "error": f"Failed to analyze Summer of Making project: {str(e)}",
+                "status": "failed"
+            }
+
     def _fallback_selection(self, files: List[FileInfo]) -> Dict[str, Any]:
         """Fallback rule-based selection when AI fails"""
         selected_files = []
