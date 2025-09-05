@@ -137,8 +137,6 @@ class AIService:
             
         except Exception as e:
             print(f"AI analysis failed: {str(e)}")
-            # Fallback to rule-based selection
-            return self._fallback_selection(files)
     
     async def analyze_readme(self, readme_content: str, repo_url: str) -> Dict[str, Any]:
         system_message, user_prompt = PromptTemplates.readme_analysis_prompt(
@@ -160,76 +158,6 @@ class AIService:
                 "error": f"Failed to analyze README: {str(e)}"
             }
     
-    async def analyze_repository_structure(
-        self,
-        files: List[str],
-        languages: Dict[str, int],
-        repo_info: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Analyze repository structure and provide insights
-        
-        Args:
-            files: List of file paths in the repository
-            languages: Dictionary of detected languages
-            repo_info: Additional repository information
-            
-        Returns:
-            Structure analysis results
-        """
-        system_message, user_prompt = PromptTemplates.repository_structure_analysis_prompt(
-            files, languages, repo_info
-        )
-        
-        try:
-            response = await self.client.prompt(
-                prompt=user_prompt,
-                system_message=system_message,
-                temperature=0.3,
-                max_tokens=1200
-            )
-            
-            return self._parse_json_response(response)
-                
-        except Exception as e:
-            return {
-                "error": f"Failed to analyze repository structure: {str(e)}"
-            }
-
-    async def analyze_code_quality(
-        self,
-        code_features: Dict[str, Any],
-        file_paths: List[str]
-    ) -> Dict[str, Any]:
-        """
-        Analyze code quality based on extracted features
-        
-        Args:
-            code_features: Extracted code features from tree-sitter
-            file_paths: List of analyzed file paths
-            
-        Returns:
-            Code quality analysis
-        """
-        system_message, user_prompt = PromptTemplates.code_quality_analysis_prompt(
-            code_features, file_paths
-        )
-        
-        try:
-            response = await self.client.prompt(
-                prompt=user_prompt,
-                system_message=system_message,
-                temperature=0.3,
-                max_tokens=1000
-            )
-            
-            return self._parse_json_response(response)
-                
-        except Exception as e:
-            return {
-                "error": f"Failed to analyze code quality: {str(e)}"
-            }
-
     async def analyze_commits(
         self,
         commits_data: List[Dict[str, Any]],
@@ -425,81 +353,23 @@ class AIService:
                 "error": f"Failed to analyze code features: {str(e)}",
                 "status": "failed"
             }
-
-    def _fallback_selection(self, files: List[FileInfo]) -> Dict[str, Any]:
-        """Fallback rule-based selection when AI fails"""
-        selected_files = []
-        excluded_files = []
-        
-        important_files = {
-            'README.md', 'README.txt', 'readme.md', 'readme.txt',
-            'package.json', 'requirements.txt', 'Pipfile', 'pyproject.toml',
-            'Cargo.toml', 'go.mod', 'pom.xml', 'build.gradle',
-            'Dockerfile', 'docker-compose.yml', 'Makefile',
-            'main.py', 'app.py', 'index.js', 'main.js', 'server.js'
-        }
-        
-        for file_info in files:
-            # Always include important configuration and entry point files
-            if file_info.name in important_files:
-                file_info.reason = "Important configuration or entry point file"
-                file_info.ai_confidence = 0.9
-                selected_files.append(file_info)
-            # Include source files that aren't templates or auto-generated
-            elif not getattr(file_info, 'is_template', False) and not getattr(file_info, 'is_auto_generated', False):
-                ext = '.' + file_info.name.split('.')[-1] if '.' in file_info.name else ''
-                # Basic extension check
-                if ext in ['.py', '.js', '.ts', '.java', '.cpp', '.c', '.go', '.rs', '.rb', '.php']:
-                    file_info.reason = "Source code file"
-                    file_info.ai_confidence = 0.7
-                    selected_files.append(file_info)
-                else:
-                    file_info.reason = "Non-source file type"
-                    excluded_files.append(file_info)
-            else:
-                file_info.reason = "Template or auto-generated file"
-                excluded_files.append(file_info)
-        
-        return {
-            "selected_files": selected_files,
-            "excluded_files": excluded_files,
-            "analysis_summary": {
-                "method": "rule-based_fallback",
-                "note": "AI analysis unavailable, used rule-based selection"
-            },
-            "total_selected": len(selected_files),
-            "total_excluded": len(excluded_files)
-        }
     
     def _parse_json_response(self, response: str) -> Dict[str, Any]:
-        """
-        Parse JSON response from AI, handling various formatting issues
-        
-        Args:
-            response: Raw AI response string
-            
-        Returns:
-            Parsed JSON dict or error dict if parsing fails
-        """
-        # Clean up the response to handle markdown code blocks and other formatting
         cleaned_response = response.strip()
         
-        # Remove markdown code block markers if present
         if cleaned_response.startswith("```json"):
-            cleaned_response = cleaned_response[7:]  # Remove ```json
+            cleaned_response = cleaned_response[7:] 
         elif cleaned_response.startswith("```"):
-            cleaned_response = cleaned_response[3:]   # Remove ```
+            cleaned_response = cleaned_response[3:]  
         
         if cleaned_response.endswith("```"):
-            cleaned_response = cleaned_response[:-3]  # Remove trailing ```
-        
-        # Remove any leading/trailing whitespace after cleanup
+            cleaned_response = cleaned_response[:-3]  
+
         cleaned_response = cleaned_response.strip()
         
         try:
             return json.loads(cleaned_response)
         except json.JSONDecodeError as e:
-            # If JSON parsing still fails, try to extract JSON from the response
             import re
             json_match = re.search(r'\{.*\}', cleaned_response, re.DOTALL)
             if json_match:
@@ -508,7 +378,6 @@ class AIService:
                 except json.JSONDecodeError:
                     pass
             
-            # If all JSON parsing attempts fail, return error dict
             return {
                 "raw_analysis": response,
                 "cleaned_response": cleaned_response,
@@ -518,14 +387,12 @@ class AIService:
 _ai_service: Optional[AIService] = None
 
 def get_ai_service() -> AIService:
-    """Get or create the AI service singleton"""
     global _ai_service
     if _ai_service is None:
         _ai_service = AIService()
     return _ai_service
 
 async def cleanup_ai_service():
-    """Cleanup the AI service"""
     global _ai_service
     if _ai_service:
         await _ai_service.client.close()

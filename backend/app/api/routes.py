@@ -28,18 +28,6 @@ async def get_summer_of_making_service() -> SummerOfMakingService:
     return await get_summer_service()
 
 def parse_github_url(repo_url: str) -> tuple[str, str]:
-    """
-    Parse GitHub URL to extract owner and repo name
-    
-    Args:
-        repo_url: GitHub repository URL or owner/repo format
-        
-    Returns:
-        Tuple of (owner, repo)
-        
-    Raises:
-        ValueError: If URL format is invalid
-    """
     github_pattern = r"(?:github\.com/)?([^/]+)/([^/]+?)(?:\.git)?(?:/.*)?$"
     match = re.search(github_pattern, repo_url)
     
@@ -49,18 +37,6 @@ def parse_github_url(repo_url: str) -> tuple[str, str]:
     return match.groups()
 
 def parse_summer_project_url(project_input: str) -> int:
-    """
-    Parse Summer of Making project URL or ID to extract project ID
-    
-    Args:
-        project_input: Summer of Making project URL or project ID
-        
-    Returns:
-        Project ID as integer
-        
-    Raises:
-        ValueError: If format is invalid
-    """
     # If it's already a number, return it
     if project_input.isdigit():
         return int(project_input)
@@ -75,7 +51,7 @@ def parse_summer_project_url(project_input: str) -> int:
     raise ValueError("Invalid Summer of Making project URL or ID")
 
 
-@router.get("/code-analysis")
+@router.post("/code-analysis")
 async def analyze_code_features(
     repo_url: str = None,
     features: List[Dict[str, Any]] = None,
@@ -201,7 +177,6 @@ async def get_code_features(
                 features = await github_service.extract_code_features(owner, repo, file_path, branch)
                 
                 if features:
-                    file_extension = file_path.split('.')[-1] if '.' in file_path else 'unknown'
                     
                     file_analysis = {
                         "name": file_path.split("/")[-1],
@@ -459,7 +434,7 @@ async def analyze_repository_commits(
         raise HTTPException(status_code=400, detail=f"Failed to analyze commits: {str(e)}")
 
 
-@router.post("/repo-analysis/slop-score")
+@router.post("/repo-analysis")
 async def calculate_slop_score(
     readme_analysis: Dict[str, Any],
     repo_analysis: Dict[str, Any], 
@@ -615,29 +590,6 @@ async def get_summer_analysis(
     
 @router.get("/")
 async def root():
-    """Root endpoint"""
     return {
-        "service": "SlopScan API",
-        "description": "AI-powered GitHub repository analysis and selective file downloading with Tree-sitter code extraction",
-        "endpoints": {
-            "code_analysis": "POST /code-analysis - Analyze code features (provide repo_url OR features list)",
-            "code_features": "GET /code-analysis/code-features - Extract and return code features from repository",
-            "structure_analysis": "GET /code-analysis/structure - Repository structure analysis and file selection",
-            "readme_analysis": "GET /repo-analysis/readme-analysis - AI analysis of README content",
-            "commits_analysis": "GET /repo-analysis/commits-analysis - AI-powered commit analysis for fraud detection",
-            "commits": "GET /repo-analysis/commits - Get repository commits with AI analysis",
-            "commits_count": "GET /repo-analysis/commits-count - Get total commits count efficiently",
-            "slop_score": "POST /repo-analysis/slop-score - Calculate slop score from provided analyses",
-            "summer_project": "GET /som-analysis/project?project={id_or_url} - Get Summer of Making project data and devlogs",
-            "summer_analysis": "GET /som-analysis?project={id_or_url} - Comprehensive Summer of Making project analysis"
-        },
-        "supported_languages": [
-            "python", "javascript", "typescript", "java", "cpp", "c", "go", "rust", "ruby", "php"
-        ],
-        "features": {
-            "fraud_detection": "AI-powered analysis to detect fraudulent projects and time inflation",
-            "code_analysis": "Tree-sitter powered code feature extraction (functions, classes, variables, comments)",
-            "file_selection": "Smart file selection excluding templates and boilerplate",
-            "summer_of_making": "Integration with Hack Club's Summer of Making program analysis"
-        }
+        "message": "Hello!"
     }
