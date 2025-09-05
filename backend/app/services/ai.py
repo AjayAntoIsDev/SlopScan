@@ -388,6 +388,44 @@ class AIService:
                 "status": "failed"
             }
 
+    async def analyze_code(
+        self,
+        code_features: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        try:
+            system_message, user_prompt = PromptTemplates.code_analysis_prompt(
+                code_features
+            )
+            
+            response = await self.client.prompt(
+                prompt=user_prompt,
+                system_message=system_message,
+                temperature=0.3,
+                max_tokens=3000
+            )
+            
+            ai_analysis = self._parse_json_response(response)
+            print(ai_analysis)
+            
+            if "error" in ai_analysis:
+                return {
+                    "total_files_analyzed": len(code_features),
+                    "error": ai_analysis["error"],
+                    "raw_response": ai_analysis.get("raw_analysis", response)
+                }
+            
+            return {
+                "total_files_analyzed": len(code_features),
+                "analysis_results": ai_analysis
+            }
+            
+        except Exception as e:
+            return {
+                "total_files_analyzed": len(code_features),
+                "error": f"Failed to analyze code features: {str(e)}",
+                "status": "failed"
+            }
+
     def _fallback_selection(self, files: List[FileInfo]) -> Dict[str, Any]:
         """Fallback rule-based selection when AI fails"""
         selected_files = []

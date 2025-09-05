@@ -75,6 +75,76 @@ def parse_summer_project_url(project_input: str) -> int:
     raise ValueError("Invalid Summer of Making project URL or ID")
 
 
+@router.get("/code-analysis")
+async def analyze_code_features(
+    repo_url: str = None,
+    features: List[Dict[str, Any]] = None,
+    branch: str = "main",
+    max_files: int = 20,
+    github_service: GitHubService = Depends(get_github_service),
+    ai_service: AIService = Depends(get_ai_service)
+):
+    try:
+        if features is not None:
+            print(f"Analyzing provided code features: {len(features)} files")
+            code_features = features
+            analysis_source = "provided_features"
+            repo_info = {"source": "external_features"}
+        
+        elif repo_url is not None:
+            print(f"Extracting code features using get_code_features for {repo_url}")
+            
+            features_response = await get_code_features(
+                repo_url=repo_url,
+                branch=branch,
+                max_files=max_files,
+                file_paths=None,
+                github_service=github_service,
+                ai_service=ai_service
+            )
+            
+            code_features = features_response.get("files", [])
+            repo_info = {
+                "owner": features_response.get("owner"),
+                "repo": features_response.get("repo"),
+                "branch": features_response.get("branch"),
+                "repo_url": features_response.get("repo_url"),
+                "total_files_analyzed": len(code_features)
+            }
+        
+        else:
+            raise HTTPException(
+                status_code=400, 
+                detail="Either repo_url or features must be provided"
+            )
+        
+        if not code_features:
+            raise HTTPException(
+                status_code=404,
+                detail="No code features found to analyze"
+            )
+        
+        print(f"Running AI analysis on {len(code_features)} files")
+        ai_analysis = await ai_service.analyze_code(code_features)
+        
+        response = {
+            "repo_info": repo_info,
+            "total_files_analyzed": len(code_features),
+            "code_features": code_features,
+            "ai_analysis": ai_analysis,
+        }
+        
+        print(f"Code analysis completed: analyzed {len(code_features)} files")
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Failed to analyze code features: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/code-analysis/code-features")
 async def get_code_features(
     repo_url: str,
@@ -216,114 +286,6 @@ async def get_repository_structure(
         
     except Exception as e:
         print(f"Failed to get repository structure for {owner}/{repo}: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/analyze", response_model=AnalysisResponse)
-async def analyze_repository(
-    request: AnalysisRequest,
-    github_service: GitHubService = Depends(get_github_service),
-    ai_service: AIService = Depends(get_ai_service)
-):
-    """
-    Analyze a GitHub repository and use AI to selectively identify important files,
-    excluding templates, auto-generated content, and boilerplate
-    """
-    try:
-        print(f"Starting repository analysis for {request.owner}/{request.repo}")
-        
-        # Get repository structure
-        structure = await github_service.get_repo_structure(request.owner, request.repo, request.branch)
-        
-        print(structure)
-        # Use AI to analyze and select files
-        ai_analysis = await ai_service.analyze_files_for_selection(
-            structure["files"], 
-            structure["analysis_summary"]
-        )
-        
-        response = AnalysisResponse(
-            owner=request.owner,
-            repo=request.repo,
-            branch=request.branch,
-            selected_files=ai_analysis["selected_files"],
-            excluded_files=ai_analysis["excluded_files"],
-            analysis_summary=ai_analysis["analysis_summary"],
-            total_selected=ai_analysis["total_selected"],
-            total_excluded=ai_analysis["total_excluded"]
-        )
-        
-        print(f"Repository analysis completed for {request.owner}/{request.repo}: selected={response.total_selected}, excluded={response.total_excluded}")
-        
-        return response
-        
-    except Exception as e:
-        print(f"Analysis failed for {request.owner}/{request.repo}")
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/repo/{owner}/{repo}/download", response_model=DownloadResponse)
-async def download_files(
-    owner: str,
-    repo: str,
-    request: DownloadRequest,
-    branch: str = "main",
-    github_service: GitHubService = Depends(get_github_service)
-):
-    try:
-        print(f"Starting file downloads for {owner}/{repo}: {len(request.file_paths)} files")
-        
-        downloaded_files = []
-        total_size = 0
-        
-        for file_path in request.file_paths:
-            if request.include_content:
-                content = await github_service.download_file_content(owner, repo, file_path, branch)
-                if content:
-                    file_info = {
-                        "path": file_path,
-                        "name": file_path.split("/")[-1],
-                        "size": len(content.encode('utf-8')),
-                        "content": content
-                    }
-                    downloaded_files.append(file_info)
-                    total_size += file_info["size"]
-        
-        response = DownloadResponse(
-            files=downloaded_files,
-            total_files=len(downloaded_files),
-            total_size=total_size
-        )
-        
-        print(f"File downloads completed for {owner}/{repo}: downloaded={len(downloaded_files)}, total_size={total_size}")
-        
-        return response
-        
-    except Exception as e:
-        print(f"Download failed for {owner}/{repo}")
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.get("/repo/{owner}/{repo}/file/{file_path:path}/features")
-async def extract_file_code_features(
-    owner: str,
-    repo: str,
-    file_path: str,
-    branch: str = "main",
-    github_service: GitHubService = Depends(get_github_service)
-):
-    try:
-        print(f"Extracting code features for {owner}/{repo}/{file_path}")
-        
-        features = await github_service.extract_code_features(owner, repo, file_path, branch)
-        
-        if not features:
-            raise HTTPException(status_code=404, detail="File not found or not supported")
-        
-        return features
-        
-    except Exception as e:
-        print(f"File feature extraction failed for {file_path}: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -658,15 +620,13 @@ async def root():
         "service": "SlopScan API",
         "description": "AI-powered GitHub repository analysis and selective file downloading with Tree-sitter code extraction",
         "endpoints": {
-            "detailed_analysis": "GET /code-analysis/detailed - Comprehensive code analysis with file selection and feature extraction",
+            "code_analysis": "POST /code-analysis - Analyze code features (provide repo_url OR features list)",
+            "code_features": "GET /code-analysis/code-features - Extract and return code features from repository",
             "structure_analysis": "GET /code-analysis/structure - Repository structure analysis and file selection",
-            "analyze": "POST /analyze - Analyze repository with AI",
             "readme_analysis": "GET /repo-analysis/readme-analysis - AI analysis of README content",
             "commits_analysis": "GET /repo-analysis/commits-analysis - AI-powered commit analysis for fraud detection",
             "commits": "GET /repo-analysis/commits - Get repository commits with AI analysis",
             "commits_count": "GET /repo-analysis/commits-count - Get total commits count efficiently",
-            "download": "POST /repo/{owner}/{repo}/download - Download selected files",
-            "file_features": "GET /repo/{owner}/{repo}/file/{file_path}/features - Extract features from specific file",
             "slop_score": "POST /repo-analysis/slop-score - Calculate slop score from provided analyses",
             "summer_project": "GET /som-analysis/project?project={id_or_url} - Get Summer of Making project data and devlogs",
             "summer_analysis": "GET /som-analysis?project={id_or_url} - Comprehensive Summer of Making project analysis"

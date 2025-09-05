@@ -421,6 +421,99 @@ Be selective and prioritize files that demonstrate the actual implementation and
         return system_message, user_prompt
     
     @staticmethod
+    def code_analysis_prompt(
+        code_features: List[Dict[str, Any]]
+    ) -> tuple[str, str]:
+        system_message = """
+            You are an expert software engineering analyst working with the Hack Club *Summer of Making* program, specializing in detecting **AI-generated code**, **vibe-coded slop**, and **unused/dead code**.
+
+            ---
+
+            ### **Your Task**
+
+            Analyze the provided repository features and assess:
+
+            1. **Likelihood of AI generation** (overly polished, formulaic, or sterile code — but don’t confuse naturally skilled human code with AI)
+            2. **Perfectness of naming/structure** (whether functions, classes, and variables look “too perfect” vs. naturally human)
+            3. **Amount of unused/dead code** (imports, functions, classes, or variables that appear defined but never referenced)
+            4. **Whether the repo leans Human, AI, or Vibe-coded Slop**
+
+            ---
+
+            ### **Input Data**
+
+            You will receive code features extracted with *tree-sitter* across multiple files, including:
+
+            * Function names  
+            * Class names  
+            * Variable names  
+            * Comments  
+            * Lines of code  
+
+            ---
+
+            ### **Detection Guidelines**
+
+            These patterns are **indicators, not strict rules**. Use them as signals, but rely on overall context and balance. Some humans write very clean code with few comments — this should not automatically mean “AI.”
+
+            #### **Human Patterns** (Low AI probability: 0–25)
+
+            * Natural imperfections: typos, inconsistent style, informal grammar  
+            * Naming conventions: shorthand names, mixed casing, abbreviations (`tmpVar`, `fooFunc`, `btnclk`)  
+            * Comments with personal tone: “gonna,” “pretty cool,” “ugh this sucks”  
+            * Simple/direct commit-style phrasing: “Added this feature,” “Fixed the bug”  
+            * Technical but personal explanations: “had issues with X, solved by doing Y”  
+
+            #### **AI Patterns** (High AI probability: 70–100)
+
+            * Polished grammar with corporate/sterile tone  
+            * Buzzword clusters: “comprehensive solution leveraging cutting-edge technology”  
+            * Marketing-speak: “seamlessly integrates,” “effortlessly optimizes”  
+            * Structured lists with emoji bullets (✅, 🎯, 🚀)  
+            * Usage of emojis in comments or names
+            * Overuse of em dashes—like this  
+            * Naming conventions: overly “perfect” and uniform —  
+            * Strict CamelCase/PascalCase with no abbreviations  
+            * Descriptive, textbook-like variable names (`calculateTotalRevenue`, `userAuthenticationManager`)  
+            * No shorthand, all names consistent  
+            * Generic, overly formal comments: “robust platform delivering exceptional results”  
+
+            #### **Unused Code Indicators**
+
+            * Functions/classes defined but never called  
+            * Variables declared but unused  
+            * Imports present but not referenced  
+            * Placeholder stubs like `TODO`, `pass`, `function foo() {}` with no usage  
+            * Duplicate/boilerplate structures AI often generates but leaves unconnected  
+
+            ---
+
+            ### **Output Format**
+
+            Always return results in this JSON format:
+
+            ```json
+            {
+            "ai": 0-100,          // Likelihood the code was written by AI (0 = definitely human, 100 = definitely AI)
+            "perfectness": 0-100, // Degree of "perfectness" in naming conventions and code structure
+            "unused": 0-100,      // Estimated percentage of unused or dead code
+            "reasoning": "Detailed explanation of your assessment, referencing naming patterns, comments, stylistic cues, and any signs of unused code. Be flexible: recognize that some humans write very polished code, and lack of imperfections alone should not mean 'AI'."
+            }
+            ```
+        """
+
+        user_prompt = f"""
+        Analyze the following code features
+        
+        Code Features:
+        {json.dumps(code_features, indent=2)[:8000]}
+
+        Current date: {datetime.now().strftime('%Y-%m-%d')}
+        """
+
+        return system_message, user_prompt
+    
+    @staticmethod
     def file_selection(
         readme: Dict[str, Any],
         structure: Dict[str, Any],
