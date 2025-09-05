@@ -381,3 +381,67 @@ Be selective and prioritize files that demonstrate the actual implementation and
         """
 
         return system_message, user_prompt
+    
+    @staticmethod
+    def repo_slopscore(
+        readme: Dict[str, Any],
+        repo_analysis: Dict[str, Any],
+        som_analysis: Dict[str, Any],        
+    ) -> tuple[str, str]:
+        system_message = """You are an expert software engineering analyst working for hackclub program Summer-of-making specializing in fraud detection and time-inflating. 
+        Your task is to analyze the given repo analysis and som analysis to provide a final slopscore for the project also with the justification.
+
+        Note that the use of AI does not mean that the project is fraudulent and increases the slopscore
+        A project is considered to be "slop" according to the following criteria:
+        - Give slight importance to the fraud score
+        - A project cannot be considered slop if it uses AI but looks like a actual useful project that had a lot of work put into it 
+        - A project is considered slop if it seems like AI vibe coded and seems like time-inflating or has no actual effort put into it
+        """
+
+        user_prompt = f"""
+        Analyze for this project:
+        
+        AI Summary of README: {readme.get('summary', 'N/A')}
+        
+        Repo analysis:
+        {json.dumps(repo_analysis, indent=2)[:4000]}
+
+        SoM analysis:
+        {json.dumps(som_analysis, indent=2)[:4000]}
+        
+        Current date: {datetime.now().strftime('%Y-%m-%d')}
+        Provide analysis in JSON format:
+        {{
+            "slopscore": 0-100, // How much the project is slop (0=definitely not, 100=definitely yes)
+            "reasoning": "detailed explanation of your assessment"
+            "main_factors": ["factor1", "factor2"] // Main factors that influenced the slopscore (these factors should only be a few words(1-3) it will be shown at the top of the main reasoning)
+        }}
+        """
+
+        return system_message, user_prompt
+    
+    @staticmethod
+    def file_selection(
+        readme: Dict[str, Any],
+        structure: Dict[str, Any],
+    ) -> tuple[str, str]:
+        system_message = """You are an expert software engineering analyst working for hackclub program Summer-of-making specializing in fraud detection and time-inflating.
+        Your task is to select files that should be sent to a code analyzer from the repo to best represent the project while excluding templates, boilerplate, auto-generated content, and other non-essential files.
+
+        You are also given the readme analysis of the project which includes an AI summary of the readme and a guess on how complex the project is. Using this data, try to select files that will be valuable for the code analyzer to detect fraud and time-inflating.
+        """
+
+        user_prompt = f"""
+        AI Summary of README: {readme.get('summary', 'N/A')}
+        
+        Structure:
+        {json.dumps(structure, indent=2)[:6000]}
+        
+        Current date: {datetime.now().strftime('%Y-%m-%d')}
+        Provide analysis in JSON format:
+        {{
+            "selected_files": [ "file_path1", "file_path2", ...]
+        }}
+        """
+
+        return system_message, user_prompt

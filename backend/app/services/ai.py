@@ -350,6 +350,44 @@ class AIService:
                 "status": "failed"
             }
 
+    async def select_files_for_analysis(
+        self,
+        readme_analysis: Dict[str, Any],
+        structure: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        try:
+            system_message, user_prompt = PromptTemplates.file_selection(
+                readme_analysis, structure
+            )
+            
+            response = await self.client.prompt(
+                prompt=user_prompt,
+                system_message=system_message,
+                temperature=0.2,
+                max_tokens=2000
+            )
+            
+            ai_analysis = self._parse_json_response(response)
+            
+            if "error" in ai_analysis:
+                return {
+                    "selected_files": [],
+                    "error": ai_analysis["error"],
+                    "raw_response": ai_analysis.get("raw_analysis", response)
+                }
+            
+            return {
+                "selected_files": ai_analysis.get("selected_files", []),
+                "total_selected": len(ai_analysis.get("selected_files", [])),
+            }
+            
+        except Exception as e:
+            return {
+                "selected_files": [],
+                "error": f"Failed to select files for analysis: {str(e)}",
+                "status": "failed"
+            }
+
     def _fallback_selection(self, files: List[FileInfo]) -> Dict[str, Any]:
         """Fallback rule-based selection when AI fails"""
         selected_files = []

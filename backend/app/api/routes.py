@@ -2,7 +2,7 @@
 API routes for SlopScan backend
 """
 from fastapi import APIRouter, HTTPException, Depends
-from typing import List
+from typing import List, Dict, Any
 import re
 
 from app.models import (
@@ -13,6 +13,7 @@ from app.models import (
 from app.services.github import GitHubService
 from app.services.ai import AIService
 from app.services.summer_of_making import get_summer_service, SummerOfMakingService
+from app.services.prompts import PromptTemplates
 
 router = APIRouter()
 
@@ -74,23 +75,38 @@ def parse_summer_project_url(project_input: str) -> int:
     raise ValueError("Invalid Summer of Making project URL or ID")
 
 
-@router.get("/repo/{owner}/{repo}/structure", response_model=RepoStructure)
+@router.get("/code-analysis/structure")
 async def get_repository_structure(
-    owner: str,
-    repo: str,
-    branch: str = "main",
-    github_service: GitHubService = Depends(get_github_service)
+    repo_url: str,
+    github_service: GitHubService = Depends(get_github_service),
+    ai_service: AIService = Depends(get_ai_service)
 ):
-    """Get the complete structure of a GitHub repository"""
     try:
+        owner, repo = parse_github_url(repo_url)
         print(f"Getting repository structure for {owner}/{repo} on branch {branch}")
-        print(f"Getting repository structure for owner={owner}, repo={repo}, branch={branch}")
         
         structure = await github_service.get_repo_structure(owner, repo, branch)
-        return RepoStructure(**structure)
+        
+        readme_content = await github_service.get_readme_content(owner, repo, branch)
+        
+        readme_analysis = None
+        if readme_content:
+            repo_url = f"https://github.com/{owner}/{repo}"
+            readme_analysis = await ai_service.analyze_readme(readme_content, repo_url)
+
+        
+        print("Running AI file selection for analysis")
+        file_selection = await ai_service.select_files_for_analysis(
+            readme_analysis=readme_analysis,
+            structure=structure
+        )
+        
+        print(f"Repository structure analysis completed for {owner}/{repo}")
+        
+        return file_selection
         
     except Exception as e:
-        print(f"Failed to get repository structure for owner={owner}, repo={repo}")
+        print(f"Failed to get repository structure for {owner}/{repo}: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -372,6 +388,52 @@ async def analyze_repository_commits(
         raise HTTPException(status_code=400, detail=f"Failed to analyze commits: {str(e)}")
 
 
+@router.post("/repo-analysis/slop-score")
+async def calculate_slop_score(
+    readme_analysis: Dict[str, Any],
+    repo_analysis: Dict[str, Any], 
+    som_analysis: Dict[str, Any],
+    ai_service: AIService = Depends(get_ai_service)
+):
+    try:
+        print("Calculating slop score from provided analyses")
+        
+        
+        system_message, user_prompt = PromptTemplates.repo_slopscore(
+            readme=readme_analysis,
+            repo_analysis=repo_analysis,
+            som_analysis=som_analysis
+        )
+        
+        response = await ai_service.client.prompt(
+            prompt=user_prompt,
+            system_message=system_message,
+            temperature=0.3,
+            max_tokens=2000
+        )
+        
+        slop_analysis = ai_service._parse_json_response(response)
+        
+        if "error" in slop_analysis:
+            return {
+                "error": slop_analysis["error"],
+                "raw_response": slop_analysis.get("raw_analysis", response),
+                "input_summaries": {
+                    "readme_provided": readme_analysis is not None,
+                    "repo_analysis_provided": repo_analysis is not None,
+                    "som_analysis_provided": som_analysis is not None
+                }
+            }
+        
+        print(f"Slop score calculation completed: {slop_analysis.get('slopscore', 'N/A')}")
+        
+        return slop_analysis
+        
+    except Exception as e:
+        print(f"Slop score calculation failed: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to calculate slop score: {str(e)}")
+
+
 @router.get("/som-analysis/project")
 async def get_summer_project(
     project: str,
@@ -395,7 +457,8 @@ async def get_summer_project(
             "updated_at": project_data.get("updated_at"),
             "devlogs_count": len(project_data.get("devlogs", [])),
             "devlogs": project_data.get("devlogs", []),
-            "repo_link": project_data.get("repo_link", None)
+            "repo_link": project_data.get("repo_link", None),
+            "total_time_coded": project_data.get("total_seconds_coded", None)
         }
         
         print(f"Successfully fetched Summer of Making project {project_id} with {response['devlogs_count']} devlogs")
@@ -462,6 +525,8 @@ async def get_summer_analysis(
             "devlogs_count": len(project_data.get("devlogs", [])),
             "repo_link": repo_url,
             "ai_analysis": ai_analysis,
+            "total_time_coded": project_data.get("total_seconds_coded", None),
+            "readme_analysis": repo_analysis.get("readme_analysis") if repo_analysis else None,
         }
         
         print(f"Comprehensive analysis completed for Summer of Making project {project_id}")
@@ -493,6 +558,7 @@ async def root():
             "code_features": "GET /repo/{owner}/{repo}/code-features - Extract code features using Tree-sitter",
             "file_features": "GET /repo/{owner}/{repo}/file/{file_path}/features - Extract features from specific file",
             "similarity_features": "GET /repo/{owner}/{repo}/similarity-features - Get features for code similarity analysis",
+            "slop_score": "POST /repo-analysis/slop-score - Calculate slop score from provided analyses",
             "summer_project": "GET /som-analysis/project?project={id_or_url} - Get Summer of Making project data and devlogs"
         },
         "supported_languages": [
