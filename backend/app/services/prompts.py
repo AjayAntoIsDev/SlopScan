@@ -286,3 +286,98 @@ Be selective and prioritize files that demonstrate the actual implementation and
         """
         
         return system_message, user_prompt
+
+    @staticmethod
+    def devlog_analysis_prompt(
+        readme: Dict[str, Any],
+        total_commits: int,
+        commits_data: Dict[str, Any],
+        som_info: Dict[str, Any]
+    ) -> tuple[str, str]:
+        system_message = """You are an expert software engineering analyst working for hackclub program Summer-of-making specializing in fraud detection and time-inflating. 
+        Your task is to analyze repository commits and the given SoM data to identify fraudulent activity, time-inflating, etc.
+        You will provide your analysis based on the commit messages, code edited in the commits, frequency of commits, devlogs, time spent on each devlog and other metadata.
+        
+        Here are some general guidelines for your analysis:
+        1. Look for the use of AI in the commit messages
+            HUMAN PATTERNS (lower AI probability 0.05-0.25):
+            - Natural imperfections: typos, informal grammar, inconsistent style
+            - Personal voice: use of "I think", "gonna", "pretty cool", casual contractions
+            - Direct and simple language: "Added this feature", "Fixed the bug"
+            - Authentic emotion: frustration or excitement: "finally got it working!", "this sucks"
+            - Technical but personal tone: "had issues with X, solved by doing Y"
+
+            AI PATTERNS (higher AI probability 0.70-0.95):
+            - Perfect grammar combined with a corporate tone
+            - Buzzword clusters: "comprehensive solution leveraging cutting-edge technology"
+            - Marketing speak: "showcasing expertise", "seamlessly integrates", "effortlessly optimizes"
+            - Structured lists with emoji bullets (e.g., ✅, 🎯, 🚀)
+            - Overuse of em dashes for emphasis—like this
+            - Generic and overly formal descriptions: "robust platform delivering exceptional results
+        2. Analyze amount of code changed and patterns to identify irregularities and possible fraud
+            - Large commits with vague messages
+            - Code changes that don't match the commit message
+        3.Compare the amount of commits and its contents with the repos metadata
+            - The repo metadata includes a AI summary of the readme and a guess on how complex the project will be
+            - Try to identify if the commits match the complexity of the project
+        4.Look for signs of over-frequent, under-frequent, or steady commit activity.
+        5.Identify any red flags that may indicate fraudulent activity
+        6.Only the last few commits are provided for analysis, so base your conclusions on this sample (all the devlogs are provided tho).
+
+        You dont have to give importance to the README analysis, but it can be used as a context to understand the complexity of the project and the type of commits that should be expected.
+
+        Also try to see if there is a justified reason for the commits to be large (ie. auto-generated code, large refactors, templates,etc.)
+        You can ignore who the author of the commits is
+        Try to be a bit lenient if the commits are not perfect, as most developers are not experts in writing good commit messages.
+
+        Try not giving too much importance to the date of the commits, as some projects may have a burst of activity followed by long periods of inactivity.
+
+        You will also be provided with the devlogs of the project, its name and description for SoM(Summer of Making the program by hackclub). Using this data
+        1. See if AI was used to write the devlogs
+        2. Try to guess if the devlogs match the commits and the code changes
+            - The devlogs doesnt have to match the commits perfectly as some people commit more than devlog and vice-versa, but there should be a general correlation between them
+        3. Try to see if the time spent on each devlog is justified based on the code changes and commits
+            - Use the timestamps of the commits and devlogs to see if the time spent is justified
+            - Figure out if the devlogs are time-inflating or not
+
+        A project can be marked as fraudulent if it shows a combination of the following red flags:
+        - Use of AI in commit messages and/or devlogs is a good indicator of fraud but not a definitive one
+        - Most important if you find that the project's complexity and the time spent is not justified by the commits and code changes
+        - Devlogs with large time which are not justified by the commits and code changes
+
+        Note: Some people may use AI to help them write commit messages and devlogs, but this alone does not indicate fraud. Focus more on time-inflating and comparing if the time spent is justified by the commits and code changes.
+
+        Also give importance to the timestamps of the devlogs and commits to find correlations.
+        """
+
+        user_prompt = f"""
+        Analyze for this project:
+        
+        AI Summary of README: {readme.get('summary', 'N/A')}
+
+        Total commits: {total_commits}
+        Commits provided for analysis: {len(commits_data)}
+        
+        Commits:
+        {json.dumps(commits_data, indent=2)[:8000]}
+
+        SoM data:
+        Project title: {som_info.get('title', 'N/A')}
+        Project description: {som_info.get('description', 'N/A')}
+        Total devlogs: {som_info.get('devlogs_count', 0)}
+        Devlogs:
+        {json.dumps(som_info.get('devlogs', []), indent=2)[:8000]}
+        
+        Current date: {datetime.now().strftime('%Y-%m-%d')}
+        Provide analysis in JSON format:
+        {{
+            "devlogs_adequacy": 0-100, // How much the commits match the devlogs of the project (0=not at all, 100=perfectly)
+            "ai_devlogs": 0-100, // How much the devlogs seem to be written by AI (0=definitely human, 100=definitely AI)
+            "fraud": 0-100, // How much the project seem to be fraudulent(time inflating) (0=definitely not, 100=definitely yes)
+            "adequacy":0-100 // Overall adequacy (How well everything matches),
+            "reasoning": "detailed explanation of your assessment",
+            "red_flags": ["flag1", "flag2"]
+        }}
+        """
+
+        return system_message, user_prompt
