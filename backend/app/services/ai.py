@@ -357,7 +357,7 @@ class AIService:
     ) -> Dict[str, Any]:
         try:
             system_message, user_prompt = PromptTemplates.file_selection(
-                readme_analysis, structure
+                readme_analysis, structure, max_files=20
             )
             
             response = await self.client.prompt(

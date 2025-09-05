@@ -75,6 +75,115 @@ def parse_summer_project_url(project_input: str) -> int:
     raise ValueError("Invalid Summer of Making project URL or ID")
 
 
+@router.get("/code-analysis/code-features")
+async def get_code_features(
+    repo_url: str,
+    branch: str = "main",
+    max_files: int = 20,
+    file_paths: List[str] = None,
+    github_service: GitHubService = Depends(get_github_service),
+    ai_service: AIService = Depends(get_ai_service)
+):
+    try:
+        max_files = 20
+        owner, repo = parse_github_url(repo_url)
+        print(f"Starting code feature extraction analysis for {owner}/{repo} on branch {branch}")
+        
+        if file_paths is not None:
+            print(f"Using provided file paths for analysis: {len(file_paths)} files")
+            selected_files = file_paths
+        else:
+            readme_content = await github_service.get_readme_content(owner, repo, branch)
+            if readme_content:
+                readme_analysis = await ai_service.analyze_readme(readme_content, repo_url)
+
+            structure = await github_service.get_repo_structure(owner, repo, branch)
+            
+            print("Running AI file selection for feature extraction")
+            file_selection = await ai_service.select_files_for_analysis(
+                readme_analysis=readme_analysis or {},
+                structure=structure,
+            )
+            
+            selected_files = file_selection.get("selected_files", [])
+        
+        if len(selected_files) > max_files:
+            print(f"Limiting analysis to {max_files} files (selected {len(selected_files)})")
+            selected_files = selected_files[:max_files]
+        
+        files = []
+        total_features = {
+            "total_functions": 0,
+            "total_classes": 0,
+            "total_variables": 0,
+            "total_comments": 0,
+            "programming_languages": set(),
+        }
+        
+        for file_path in selected_files:
+            try:
+                print(f"Extracting features from {file_path}")
+                
+                file_content = await github_service.download_file_content(owner, repo, file_path, branch)
+                if not file_content:
+                    continue
+                
+                features = await github_service.extract_code_features(owner, repo, file_path, branch)
+                
+                if features:
+                    file_extension = file_path.split('.')[-1] if '.' in file_path else 'unknown'
+                    
+                    file_analysis = {
+                        "name": file_path.split("/")[-1],
+                        "language": features.get("language", "unknown"),
+                        "features": features,
+                    }
+                    
+                    files.append(file_analysis)
+                    
+                    if features.get("language"):
+                        total_features["programming_languages"].add(features["language"])
+                    
+                    total_features["total_functions"] += len(
+                        features.get("function_names", []))
+                    total_features["total_classes"] += len(features.get("classes_names", []))
+                    total_features["total_variables"] += len(features.get("variables_names", []))
+                    total_features["total_comments"] += len(features.get("comments", []))
+                    
+                
+            except Exception as e:
+                print(f"Failed to extract features from {file_path}: {e}")
+                continue
+        
+        total_features["programming_languages"] = list(total_features["programming_languages"])
+        
+        response = {
+            "owner": owner,
+            "repo": repo,
+            "branch": branch,
+            "repo_url": f"https://github.com/{owner}/{repo}",
+            "analysis_summary": {
+                "total_files_in_repo": structure.get("total_files", 0),
+                "files_selected_for_analysis": len(file_selection.get("selected_files", [])),
+                "files_analyzed_in_detail": len(files),
+                "readme_available": readme_analysis is not None
+            },
+            "readme_analysis": readme_analysis,
+            "file_selection": file_selection,
+            "files": files,
+            "aggregated_features": total_features,
+        }
+        
+        print(
+            f"Detailed code analysis completed for {owner}/{repo}: analyzed {len(files)} files")
+        
+        return response
+        
+    except Exception as e:
+        print(f"Failed to perform detailed code analysis for {repo_url}: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/code-analysis/structure")
 async def get_repository_structure(
     repo_url: str,
@@ -83,11 +192,11 @@ async def get_repository_structure(
 ):
     try:
         owner, repo = parse_github_url(repo_url)
-        print(f"Getting repository structure for {owner}/{repo} on branch {branch}")
+        print(f"Getting repository structure for {owner}/{repo}")
         
-        structure = await github_service.get_repo_structure(owner, repo, branch)
+        structure = await github_service.get_repo_structure(owner, repo)
         
-        readme_content = await github_service.get_readme_content(owner, repo, branch)
+        readme_content = await github_service.get_readme_content(owner, repo)
         
         readme_analysis = None
         if readme_content:
@@ -549,19 +658,26 @@ async def root():
         "service": "SlopScan API",
         "description": "AI-powered GitHub repository analysis and selective file downloading with Tree-sitter code extraction",
         "endpoints": {
+            "detailed_analysis": "GET /code-analysis/detailed - Comprehensive code analysis with file selection and feature extraction",
+            "structure_analysis": "GET /code-analysis/structure - Repository structure analysis and file selection",
             "analyze": "POST /analyze - Analyze repository with AI",
-            "structure": "GET /repo/{owner}/{repo}/structure - Get repository structure",
-            "commits": "GET /repo/{owner}/{repo}/commits - Get repository commits with file changes",
-            "commit_analysis": "GET /repo/{owner}/{repo}/commit-analysis - AI-powered commit analysis for fraud detection",
-            "commits_count": "GET /repo/{owner}/{repo}/commits/count - Get total commits count efficiently",
+            "readme_analysis": "GET /repo-analysis/readme-analysis - AI analysis of README content",
+            "commits_analysis": "GET /repo-analysis/commits-analysis - AI-powered commit analysis for fraud detection",
+            "commits": "GET /repo-analysis/commits - Get repository commits with AI analysis",
+            "commits_count": "GET /repo-analysis/commits-count - Get total commits count efficiently",
             "download": "POST /repo/{owner}/{repo}/download - Download selected files",
-            "code_features": "GET /repo/{owner}/{repo}/code-features - Extract code features using Tree-sitter",
             "file_features": "GET /repo/{owner}/{repo}/file/{file_path}/features - Extract features from specific file",
-            "similarity_features": "GET /repo/{owner}/{repo}/similarity-features - Get features for code similarity analysis",
             "slop_score": "POST /repo-analysis/slop-score - Calculate slop score from provided analyses",
-            "summer_project": "GET /som-analysis/project?project={id_or_url} - Get Summer of Making project data and devlogs"
+            "summer_project": "GET /som-analysis/project?project={id_or_url} - Get Summer of Making project data and devlogs",
+            "summer_analysis": "GET /som-analysis?project={id_or_url} - Comprehensive Summer of Making project analysis"
         },
         "supported_languages": [
             "python", "javascript", "typescript", "java", "cpp", "c", "go", "rust", "ruby", "php"
-        ]
+        ],
+        "features": {
+            "fraud_detection": "AI-powered analysis to detect fraudulent projects and time inflation",
+            "code_analysis": "Tree-sitter powered code feature extraction (functions, classes, variables, comments)",
+            "file_selection": "Smart file selection excluding templates and boilerplate",
+            "summer_of_making": "Integration with Hack Club's Summer of Making program analysis"
+        }
     }

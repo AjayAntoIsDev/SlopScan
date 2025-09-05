@@ -424,19 +424,24 @@ Be selective and prioritize files that demonstrate the actual implementation and
     def file_selection(
         readme: Dict[str, Any],
         structure: Dict[str, Any],
+        max_files: int = 25
     ) -> tuple[str, str]:
-        system_message = """You are an expert software engineering analyst working for hackclub program Summer-of-making specializing in fraud detection and time-inflating.
+        system_message = f"""You are an expert software engineering analyst working for hackclub program Summer-of-making specializing in fraud detection and time-inflating.
         Your task is to select files that should be sent to a code analyzer from the repo to best represent the project while excluding templates, boilerplate, auto-generated content, and other non-essential files.
 
         You are also given the readme analysis of the project which includes an AI summary of the readme and a guess on how complex the project is. Using this data, try to select files that will be valuable for the code analyzer to detect fraud and time-inflating.
+
+        Note: The files should be only be the code no config files, images, documentation, or other binary files.
+
+        ONLY SELECT A MAXIMUM OF {max_files} FILES. If you think less files are needed, you can select less.
         """
 
         user_prompt = f"""
         AI Summary of README: {readme.get('summary', 'N/A')}
         
         Structure:
-        {json.dumps(structure, indent=2)[:6000]}
-        
+        {structure}
+
         Current date: {datetime.now().strftime('%Y-%m-%d')}
         Provide analysis in JSON format:
         {{

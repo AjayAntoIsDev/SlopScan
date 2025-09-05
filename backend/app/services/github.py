@@ -178,10 +178,6 @@ class GitHubService:
             return {"error": "Unexpected error" }
     
     async def extract_code_features(self, owner: str, repo: str, file_path: str, branch: str = "main") -> Optional[Dict[str, Any]]:
-        """
-        Extract code features from a specific file using Tree-sitter.
-        Returns extracted strings, function names, variables, comments, and docstrings.
-        """
         try:
             file_content = await self.download_file_content(owner, repo, file_path, branch)
             if not file_content or isinstance(file_content, dict):

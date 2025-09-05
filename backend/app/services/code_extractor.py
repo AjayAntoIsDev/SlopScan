@@ -763,14 +763,4 @@ def features_to_dict(features: CodeFeatures) -> Dict[str, Any]:
         'imports': features.imports,
         'language': features.language,
         'file_path': features.file_path,
-        'total_features': {
-            'strings_count': len(features.strings),
-            'functions_count': len(features.function_names),
-            'variables_count': len(features.variable_names),
-            'comments_count': len(features.comments),
-            'docstrings_count': len(features.docstrings),
-            'classes_count': len(features.class_names),
-            'methods_count': len(features.method_names),
-            'imports_count': len(features.imports)
-        }
     }
