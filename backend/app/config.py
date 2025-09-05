@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     github_token: str = ""
     github_api_url: str = "https://api.github.com"
     
+    # Summer of Making API settings
+    summer_session_cookie: str = ""
+    
     cerebras_api_key: str = ""
     
     api_host: str = "0.0.0.0"

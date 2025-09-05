@@ -12,6 +12,7 @@ from app.models import (
 )
 from app.services.github import GitHubService
 from app.services.ai import AIService
+from app.services.summer_of_making import get_summer_service, SummerOfMakingService
 
 router = APIRouter()
 
@@ -21,6 +22,9 @@ def get_github_service() -> GitHubService:
 
 def get_ai_service() -> AIService:
     return AIService()
+
+async def get_summer_of_making_service() -> SummerOfMakingService:
+    return await get_summer_service()
 
 def parse_github_url(repo_url: str) -> tuple[str, str]:
     """
@@ -42,6 +46,32 @@ def parse_github_url(repo_url: str) -> tuple[str, str]:
         raise ValueError("Invalid GitHub repository URL")
     
     return match.groups()
+
+def parse_summer_project_url(project_input: str) -> int:
+    """
+    Parse Summer of Making project URL or ID to extract project ID
+    
+    Args:
+        project_input: Summer of Making project URL or project ID
+        
+    Returns:
+        Project ID as integer
+        
+    Raises:
+        ValueError: If format is invalid
+    """
+    # If it's already a number, return it
+    if project_input.isdigit():
+        return int(project_input)
+    
+    # Try to extract project ID from URL
+    summer_pattern = r"(?:summer\.hackclub\.com/projects/)?(\d+)/?(?:\?.*)?$"
+    match = re.search(summer_pattern, project_input)
+    
+    if match:
+        return int(match.group(1))
+    
+    raise ValueError("Invalid Summer of Making project URL or ID")
 
 
 @router.get("/repo/{owner}/{repo}/structure", response_model=RepoStructure)
@@ -352,6 +382,45 @@ async def analyze_repository_commits(
         raise HTTPException(status_code=400, detail=f"Failed to analyze commits: {str(e)}")
 
 
+@router.get("/som-analysis/project")
+async def get_summer_project(
+    project: str,
+    summer_service: SummerOfMakingService = Depends(get_summer_of_making_service)
+):
+    """Get Summer of Making project data including devlogs"""
+    try:
+        project_id = parse_summer_project_url(project)
+        
+        print(f"Fetching Summer of Making project {project_id}")
+        
+        project_data = await summer_service.get_project_data(project_id)
+        
+        if not project_data:
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+        
+        response = {
+            "project_id": project_id,
+            "title": project_data.get("title"),
+            "description": project_data.get("description"),
+            "created_at": project_data.get("created_at"),
+            "updated_at": project_data.get("updated_at"),
+            "devlogs_count": len(project_data.get("devlogs", [])),
+            "devlogs": project_data.get("devlogs", []),
+        }
+        
+        print(f"Successfully fetched Summer of Making project {project_id} with {response['devlogs_count']} devlogs")
+        
+        return response
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Failed to fetch Summer of Making project: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to fetch project data: {str(e)}")
+
+
 @router.get("/")
 async def root():
     """Root endpoint"""
@@ -367,7 +436,8 @@ async def root():
             "download": "POST /repo/{owner}/{repo}/download - Download selected files",
             "code_features": "GET /repo/{owner}/{repo}/code-features - Extract code features using Tree-sitter",
             "file_features": "GET /repo/{owner}/{repo}/file/{file_path}/features - Extract features from specific file",
-            "similarity_features": "GET /repo/{owner}/{repo}/similarity-features - Get features for code similarity analysis"
+            "similarity_features": "GET /repo/{owner}/{repo}/similarity-features - Get features for code similarity analysis",
+            "summer_project": "GET /som-analysis/project?project={id_or_url} - Get Summer of Making project data and devlogs"
         },
         "supported_languages": [
             "python", "javascript", "typescript", "java", "cpp", "c", "go", "rust", "ruby", "php"

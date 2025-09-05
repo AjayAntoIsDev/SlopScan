@@ -362,9 +362,6 @@ class GitHubService:
             
             commits_data = response.json()
             commits = []
-            with open(f"./commit_.json", "w") as f:
-                    import json
-                    json.dump(commits_data, f, indent=2)
             
             for i, commit_item in enumerate(commits_data):
                 if i >= limit:
