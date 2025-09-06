@@ -329,7 +329,7 @@ class AIService:
                 prompt=user_prompt,
                 system_message=system_message,
                 temperature=0.3,
-                max_tokens=3000
+                max_tokens=6000
             )
             
             ai_analysis = self._parse_json_response(response)
@@ -357,6 +357,10 @@ class AIService:
     def _parse_json_response(self, response: str) -> Dict[str, Any]:
         cleaned_response = response.strip()
         
+        import re
+        think_pattern = r'<think>.*?</think>'
+        cleaned_response = re.sub(think_pattern, '', cleaned_response, flags=re.DOTALL).strip()
+        
         if cleaned_response.startswith("```json"):
             cleaned_response = cleaned_response[7:] 
         elif cleaned_response.startswith("```"):
@@ -370,7 +374,6 @@ class AIService:
         try:
             return json.loads(cleaned_response)
         except json.JSONDecodeError as e:
-            import re
             json_match = re.search(r'\{.*\}', cleaned_response, re.DOTALL)
             if json_match:
                 try:

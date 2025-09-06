@@ -25,9 +25,98 @@ export default function IndexPage() {
   const [inputValue, setInputValue] = useState("");
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingStatus, setLoadingStatus] = useState("");
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(
-    null,
-  );
+  const [analysisResult, setAnalysisResult] = useState({
+    commit_analysis: {
+      enabled: true,
+      analysis: {
+        owner: "Dave",
+        repo: "Web",
+        branch: "main",
+        total_commits: 23,
+        commits_analyzed: 23,
+        analysis: {
+          code_adequacy: 85,
+          repo_adequacy: 90,
+          ai: 70,
+          fraud: 30,
+          adequacy: 88,
+          reasoning:
+            "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse eros turpis, varius et blandit eget, pulvinar ac mi. Etiam mauris erat, sagittis at gravida eget, mattis quis nulla. Cras ut convallis ante. Duis id sodales nunc. Nunc faucibus faucibus tortor et auctor. Aliquam erat volutpat. Integer et eleifend sapien, nec fringilla lorem. Etiam maximus lectus ut sagittis pulvinar. Integer sollicitudin dolor nec laoreet cursus. Suspendisse in ultrices mi. Nunc congue varius sapien.",
+          red_flags: [],
+          total_commits_analyzed: 23,
+          total_commits_in_repo: 23,
+        },
+      },
+      readme_analysis: {
+        probability: 25,
+        reasoning:
+          "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse eros turpis, varius et blandit eget, pulvinar ac mi. Etiam mauris erat, sagittis at gravida eget, mattis quis nulla. Cras ut convallis ante. Duis id sodales nunc. Nunc faucibus faucibus tortor et auctor. Aliquam erat volutpat. Integer et eleifend sapien, nec fringilla lorem. Etiam maximus lectus ut sagittis pulvinar. Integer sollicitudin dolor nec laoreet cursus. Suspendisse in ultrices mi. Nunc congue varius sapien.",
+        summary:
+          "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse eros turpis, varius et blandit eget, pulvinar ac mi. Etiam mauris erat, sagittis at gravida eget, mattis quis nulla. Cras ut convallis ante. Duis id sodales nunc. Nunc faucibus faucibus tortor et auctor. Aliquam erat volutpat. Integer et eleifend sapien, nec fringilla lorem. Etiam maximus lectus ut sagittis pulvinar. Integer sollicitudin dolor nec laoreet cursus. Suspendisse in ultrices mi. Nunc congue varius sapien.",
+        complexity: 60,
+      },
+    },
+    som_analysis: {
+      enabled: true,
+      analysis: {
+        project_id: 3939,
+        devlogs_count: 7,
+        ai_analysis: {
+          devlogs_adequacy: 70,
+          ai_devlogs: 30,
+          fraud: 60,
+          adequacy: 65,
+          reasoning:
+            "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse eros turpis, varius et blandit eget, pulvinar ac mi. Etiam mauris erat, sagittis at gravida eget, mattis quis nulla. Cras ut convallis ante. Duis id sodales nunc. Nunc faucibus faucibus tortor et auctor. Aliquam erat volutpat. Integer et eleifend sapien, nec fringilla lorem. Etiam maximus lectus ut sagittis pulvinar. Integer sollicitudin dolor nec laoreet cursus. Suspendisse in ultrices mi. Nunc congue varius sapien.",
+          red_flags: [],
+          total_devlogs: 7,
+        },
+        total_time_coded: 0,
+        readme_analysis: {
+          probability: 35,
+          reasoning:
+            "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse eros turpis, varius et blandit eget, pulvinar ac mi. Etiam mauris erat, sagittis at gravida eget, mattis quis nulla. Cras ut convallis ante. Duis id sodales nunc. Nunc faucibus faucibus tortor et auctor. Aliquam erat volutpat. Integer et eleifend sapien, nec fringilla lorem. Etiam maximus lectus ut sagittis pulvinar. Integer sollicitudin dolor nec laoreet cursus. Suspendisse in ultrices mi. Nunc congue varius sapien.",
+          complexity: 60,
+          summary:
+            "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse eros turpis, varius et blandit eget, pulvinar ac mi. Etiam mauris erat, sagittis at gravida eget, mattis quis nulla. Cras ut convallis ante. Duis id sodales nunc. Nunc faucibus faucibus tortor et auctor. Aliquam erat volutpat. Integer et eleifend sapien, nec fringilla lorem. Etiam maximus lectus ut sagittis pulvinar. Integer sollicitudin dolor nec laoreet cursus. Suspendisse in ultrices mi. Nunc congue varius sapien.",
+        },
+      },
+    },
+    repo_analysis: {
+      enabled: true,
+      analysis: {
+        slopscore: 65,
+        reasoning:
+          "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse eros turpis, varius et blandit eget, pulvinar ac mi. Etiam mauris erat, sagittis at gravida eget, mattis quis nulla. Cras ut convallis ante. Duis id sodales nunc. Nunc faucibus faucibus tortor et auctor. Aliquam erat volutpat. Integer et eleifend sapien, nec fringilla lorem. Etiam maximus lectus ut sagittis pulvinar. Integer sollicitudin dolor nec laoreet cursus. Suspendisse in ultrices mi. Nunc congue varius sapien.",
+        main_factors: [
+          "AI-assisted commits",
+          "Time-inflation",
+          "Devlog inconsistencies",
+        ],
+      },
+    },
+    code_analysis: {
+      enabled: true,
+      analysis: {
+        total_files_analyzed: 11,
+        code_features: [],
+        ai_analysis: {
+          total_files_analyzed: 11,
+          analysis_results: {
+            ai: 85,
+            perfectness: 95,
+            unused: 20,
+            reasoning:
+              "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse eros turpis, varius et blandit eget, pulvinar ac mi. Etiam mauris erat, sagittis at gravida eget, mattis quis nulla. Cras ut convallis ante. Duis id sodales nunc. Nunc faucibus faucibus tortor et auctor. Aliquam erat volutpat. Integer et eleifend sapien, nec fringilla lorem. Etiam maximus lectus ut sagittis pulvinar. Integer sollicitudin dolor nec laoreet cursus. Suspendisse in ultrices mi. Nunc congue varius sapien.",
+          },
+        },
+      },
+    },
+    code_score: {
+      enabled: true,
+    },
+  });
+
   const [analysisMode, setAnalysisMode] = useState<"both" | "repo" | "code">(
     "both",
   );
@@ -65,12 +154,9 @@ export default function IndexPage() {
       setLoadingStatus("Initializing analysis...");
 
       try {
-        const result = await analysisService.mockAnalyzeRepository(
+        const result = await analysisService.analyzeProject(
           inputValue,
-          {
-            mode: analysisMode,
-            maxFiles: maxFiles,
-          },
+          analysisMode,
           (progress, status) => {
             setLoadingProgress(progress);
             setLoadingStatus(status);
@@ -78,7 +164,7 @@ export default function IndexPage() {
         );
 
         setAnalysisResult(result);
-        setFinalSlopScore(result.overallSlopScore);
+        setFinalSlopScore(result.repo_analysis.analysis.slopscore || 0);
         setIsFullyLoaded(true);
         setIsModalOpen(false);
       } catch (error) {

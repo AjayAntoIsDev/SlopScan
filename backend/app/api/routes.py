@@ -51,7 +51,7 @@ def parse_summer_project_url(project_input: str) -> int:
     raise ValueError("Invalid Summer of Making project URL or ID")
 
 
-@router.post("/code-analysis")
+@router.get("/code-analysis")
 async def analyze_code_features(
     repo_url: str = None,
     features: List[Dict[str, Any]] = None,
@@ -504,6 +504,7 @@ async def get_summer_project(
             "devlogs_count": len(project_data.get("devlogs", [])),
             "devlogs": project_data.get("devlogs", []),
             "repo_link": project_data.get("repo_link", None),
+            "readme_link": project_data.get("readme_link", None),
             "total_time_coded": project_data.get("total_seconds_coded", None)
         }
         

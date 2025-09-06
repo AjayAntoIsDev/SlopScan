@@ -1,3 +1,5 @@
+import type { AnalysisResult } from "@/services/analysis-service";
+
 import { Card, CardHeader, CardBody } from "@heroui/card";
 import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
@@ -5,13 +7,22 @@ import { Brain, Code, Target, Zap, Copy } from "lucide-react";
 
 interface CodeAnalysisProps {
   blurred?: boolean;
+  data?: AnalysisResult | null;
 }
 
-export function CodeAnalysis({ blurred = false }: CodeAnalysisProps) {
+export function CodeAnalysis({ blurred = false, data }: CodeAnalysisProps) {
+  const codeData = data?.codeAnalysis || {
+    aiInCode: 0,
+    perfectness: 0,
+    unusedCode: 0,
+  };
+
+  const code_analysis = data?.code_analysis.analysis.ai_analysis || {};
+
   return (
     <div className="w-full">
       <Card
-        className={`w-full h-full flex ${blurred ? "blur-lg" : ""}`}
+        className={`w-full h-full flex ${blurred ? "blur-lg" : ""} ${!data?.code_analysis?.enabled ? "blur-lg" : ""}`}
         radius="lg"
       >
         <CardBody className="pt-2">
@@ -29,13 +40,16 @@ export function CodeAnalysis({ blurred = false }: CodeAnalysisProps) {
                   <div className="grid grid-cols-3 gap-4 w-full">
                     <div className="text-center">
                       <Brain className="h-6 w-6 text-primary mx-auto mb-2" />
-                      <div className="text-2xl font-bold text-primary">8.2</div>
+                      <div className="text-2xl font-bold text-primary">
+                        {Math.round(code_analysis.analysis_results.ai)}%
+                      </div>
                       <div className="text-sm text-default-600">AI in code</div>
                     </div>
                     <div className="text-center">
                       <Zap className="h-6 w-6 text-secondary mx-auto mb-2" />
                       <div className="text-2xl font-bold text-secondary">
-                        94%
+                        {Math.round(code_analysis.analysis_results.perfectness)}
+                        %
                       </div>
                       <div className="text-sm text-default-600">
                         Perfectness
@@ -43,7 +57,9 @@ export function CodeAnalysis({ blurred = false }: CodeAnalysisProps) {
                     </div>
                     <div className="text-center">
                       <Copy className="h-6 w-6 text-warning mx-auto mb-2" />
-                      <div className="text-2xl font-bold text-warning">23%</div>
+                      <div className="text-2xl font-bold text-warning">
+                        {Math.round(code_analysis.analysis_results.unused)}%
+                      </div>
                       <div className="text-sm text-default-600">
                         Unused Code
                       </div>
@@ -64,48 +80,14 @@ export function CodeAnalysis({ blurred = false }: CodeAnalysisProps) {
                 <CardBody className="grid grid-cols-4 grid-rows-1 gap-4">
                   <div className="text-center flex items-center justify-center">
                     <div className="text-5xl font-bold text-primary">
-                      85
+                      {code_analysis.analysis_results.ai}
                       <span className="text-xs text-default-600">/100</span>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-1 justify-center">
-                    <Chip
-                      className="text-xs px-2 py-0.5 h-5"
-                      color="primary"
-                      size="sm"
-                      variant="flat"
-                    >
-                      Clean structure
-                    </Chip>
-                    <Chip
-                      className="text-xs px-2 py-0.5 h-5"
-                      color="warning"
-                      size="sm"
-                      variant="flat"
-                    >
-                      Some duplicates
-                    </Chip>
-                    <Chip
-                      className="text-xs px-2 py-0.5 h-5"
-                      color="secondary"
-                      size="sm"
-                      variant="flat"
-                    >
-                      Good performance
-                    </Chip>
-                  </div>
-                  <div className="col-span-2">
+                  <div className="col-span-3">
                     <ScrollShadow className="h-32 p-3 bg-default-50 rounded-lg">
                       <div className="space-y-2 text-xs">
-                        Lorem ipsum dolor sit amet, consectetur adipisicing
-                        elit. Excepturi architecto pariatur maxime expedita
-                        ullam aliquid recusandae iste minima qui, ducimus
-                        dolorem sunt culpa? Ad rerum beatae repellendus
-                        laboriosam officiis. Ab. Lorem ipsum dolor sit amet
-                        consectetur adipisicing elit. Non ipsum eaque architecto
-                        nobis voluptates dolorem commodi quidem. Asperiores
-                        harum culpa nesciunt magnam eos impedit fugit. Rerum sit
-                        expedita consequatur aperiam.
+                        {code_analysis.analysis_results.reasoning}
                       </div>
                     </ScrollShadow>
                   </div>

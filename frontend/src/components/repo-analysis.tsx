@@ -1,3 +1,5 @@
+import type { AnalysisResult } from "@/services/analysis-service";
+
 import { Card, CardHeader, CardBody } from "@heroui/card";
 import { Image } from "@heroui/image";
 import { Breadcrumbs, BreadcrumbItem } from "@heroui/breadcrumbs";
@@ -16,16 +18,28 @@ import {
 
 interface RepoAnalysisProps {
   blurred?: boolean;
+  data?: AnalysisResult | null;
 }
 
-export function RepoAnalysis({ blurred = false }: RepoAnalysisProps) {
+export function RepoAnalysis({ blurred = false, data }: RepoAnalysisProps) {
+  // Extract repo owner and name from URL if available in analysis data
+  const getRepoInfo = (commit_analysis) => {
+    return { owner: commit_analysis.owner, name: commit_analysis.repo };
+  };
+
+  const commit_analysis = data.commit_analysis.analysis;
+  const som_analysis = data.som_analysis.analysis;
+  const repo_analysis = data.repo_analysis.analysis;
+
+  const { owner, name } = getRepoInfo(commit_analysis);
+
   return (
     <div className="rounded-large flex items-center justify-center">
       <div className="absolute z-50">
         <p className="font-bold text-2xl" />
       </div>
       <Card
-        className={`w-full select-none ${blurred ? "blur-lg" : ""}`}
+        className={`w-full select-none ${blurred ? "blur-lg" : ""} ${!data?.repo_analysis?.enabled ? "blur-lg" : ""}`}
         radius="lg"
       >
         <CardHeader className="pb-2">
@@ -42,9 +56,9 @@ export function RepoAnalysis({ blurred = false }: RepoAnalysisProps) {
                   />
                 }
               >
-                AjayAntoIsDev
+                {owner}
               </BreadcrumbItem>
-              <BreadcrumbItem>SlopScan</BreadcrumbItem>
+              <BreadcrumbItem>{name}</BreadcrumbItem>
             </Breadcrumbs>
           </div>
         </CardHeader>
@@ -64,24 +78,33 @@ export function RepoAnalysis({ blurred = false }: RepoAnalysisProps) {
                   <div className="grid grid-cols-3 gap-4 w-full">
                     <div className="text-center">
                       <Brain className="h-6 w-6 text-warning mx-auto mb-2" />
-                      <div className="text-2xl font-bold text-warning">15%</div>
+                      <div className="text-2xl font-bold text-warning">
+                        {Math.round(commit_analysis.analysis.ai)}%
+                      </div>
                       <div className="text-sm text-default-600">Use of AI</div>
                     </div>
                     <div className="text-center">
                       <Activity className="h-6 w-6 text-primary mx-auto mb-2" />
-                      <div className="text-2xl font-bold text-primary">156</div>
+                      <div className="text-2xl font-bold text-primary">
+                        {commit_analysis.total_commits}
+                      </div>
                       <div className="text-sm text-default-600">Commits</div>
                     </div>
                     <div className="text-center">
                       <XCircle className="h-6 w-6 text-danger mx-auto mb-2" />
-                      <div className="text-2xl font-bold text-danger">12%</div>
+                      <div className="text-2xl font-bold text-danger">
+                        {Math.round(commit_analysis.analysis.adequacy)}%
+                      </div>
                       <div className="text-sm text-default-600">Adequacy</div>
                     </div>
                   </div>
                 </CardBody>
               </Card>
 
-              <Card className="col-span-2 row-span-1 pb-2" radius="lg">
+              <Card
+                className={`col-span-2 row-span-1 pb-2 ${!data?.som_analysis?.enabled ? "blur-lg" : ""}`}
+                radius="lg"
+              >
                 <CardHeader className="pb-2">
                   <div className="flex items-center gap-2">
                     <BookOpen className="h-5 w-5 text-secondary" />
@@ -93,19 +116,25 @@ export function RepoAnalysis({ blurred = false }: RepoAnalysisProps) {
                   <div className="grid grid-cols-3 gap-4 w-full">
                     <div className="text-center">
                       <FileText className="h-6 w-6 text-success mx-auto mb-2" />
-                      <div className="text-2xl font-bold text-success">23</div>
+                      <div className="text-2xl font-bold text-success">
+                        {som_analysis.devlogs_count}
+                      </div>
                       <div className="text-sm text-default-600">Devlogs</div>
                     </div>
                     <div className="text-center">
                       <Clock className="h-6 w-6 text-primary mx-auto mb-2" />
                       <div className="text-2xl font-bold text-primary">
-                        4.2h
+                        {som_analysis.ai_analysis.fraud}%
                       </div>
-                      <div className="text-sm text-default-600">Avg Time</div>
+                      <div className="text-sm text-default-600">
+                        Time inflation
+                      </div>
                     </div>
                     <div className="text-center">
                       <Brain className="h-6 w-6 text-warning mx-auto mb-2" />
-                      <div className="text-2xl font-bold text-warning">87%</div>
+                      <div className="text-2xl font-bold text-warning">
+                        {Math.round(som_analysis.ai_analysis.adequacy)}%
+                      </div>
                       <div className="text-sm text-default-600">
                         Authenticity
                       </div>
@@ -126,7 +155,7 @@ export function RepoAnalysis({ blurred = false }: RepoAnalysisProps) {
                 <CardBody className="flex flex-col gap-4">
                   <div className="text-center">
                     <div className="text-5xl font-bold text-danger">
-                      73
+                      {repo_analysis.slopscore}
                       <span className="text-xs text-default-600">/100</span>
                     </div>
                   </div>
@@ -135,42 +164,23 @@ export function RepoAnalysis({ blurred = false }: RepoAnalysisProps) {
                     <ScrollShadow className="h-48 p-3 bg-default-50 rounded-lg">
                       <div className="space-y-2 text-xs">
                         <div className="flex flex-wrap gap-1 mb-3">
-                          <Chip
-                            className="text-xs px-2 py-0.5 h-5"
-                            color="danger"
-                            size="sm"
-                            variant="flat"
-                          >
-                            Vague commits
-                          </Chip>
-                          <Chip
-                            className="text-xs px-2 py-0.5 h-5"
-                            color="warning"
-                            size="sm"
-                            variant="flat"
-                          >
-                            AI in README
-                          </Chip>
-                          <Chip
-                            className="text-xs px-2 py-0.5 h-5"
-                            color="success"
-                            size="sm"
-                            variant="flat"
-                          >
-                            Good devlogs
-                          </Chip>
+                          {repo_analysis.main_factors
+                            .slice(0, 6)
+                            .map((factor, index) => (
+                              <Chip
+                                key={index}
+                                className="text-xs px-2 py-0.5 h-5"
+                                color="warning"
+                                size="sm"
+                                variant="flat"
+                              >
+                                {factor.length > 15
+                                  ? `${factor.substring(0, 15)}...`
+                                  : factor}
+                              </Chip>
+                            ))}
                         </div>
-                        <p>
-                          Lorem ipsum dolor sit amet, consectetur adipisicing
-                          elit. Excepturi architecto pariatur maxime expedita
-                          ullam aliquid recusandae iste minima qui, ducimus
-                          dolorem sunt culpa? Ad rerum beatae repellendus
-                          laboriosam officiis. Ab. Lorem ipsum dolor sit amet
-                          consectetur adipisicing elit. Non ipsum eaque
-                          architecto nobis voluptates dolorem commodi quidem.
-                          Asperiores harum culpa nesciunt magnam eos impedit
-                          fugit. Rerum sit expedita consequatur aperiam.
-                        </p>
+                        <p>{repo_analysis.reasoning}</p>
                       </div>
                     </ScrollShadow>
                   </div>
