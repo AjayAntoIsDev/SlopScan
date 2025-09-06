@@ -120,7 +120,7 @@ export default function IndexPage() {
   const [analysisMode, setAnalysisMode] = useState<"both" | "repo" | "code">(
     "both",
   );
-  const [maxFiles, setMaxFiles] = useState(50);
+  const [maxFiles, setMaxFiles] = useState(20);
   const [isValidUrl, setIsValidUrl] = useState(false);
 
   const validateUrl = (value: string) => {
@@ -257,7 +257,7 @@ export default function IndexPage() {
                   <div className="flex items-center gap-3">
                     <NumberInput
                       className="flex-1"
-                      defaultValue={50}
+                      defaultValue={20}
                       isDisabled={true}
                       label="Max files to analyze"
                       max={100}
